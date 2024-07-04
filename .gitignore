@@ -9,6 +9,7 @@ out/
 # Distribution / packaging
 .Python
 build/
+content/
 develop-eggs/
 dist/
 downloads/
