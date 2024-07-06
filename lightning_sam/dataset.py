@@ -27,6 +27,7 @@ class COCODataset(Dataset):
     def __getitem__(self, idx):
         image_id = self.image_ids[idx]
         image_info = self.coco.loadImgs(image_id)[0]
+        name=image_info['file_name'];
         image_path = os.path.join(self.root_dir, image_info['file_name'])
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -43,17 +44,17 @@ class COCODataset(Dataset):
             masks.append(mask)
 
         if self.transform:
-            image, masks, bboxes = self.transform(image, masks, np.array(bboxes))
+            image, masks, bboxes,name = self.transform(image, masks, np.array(bboxes),name)
 
         bboxes = np.stack(bboxes, axis=0)
         masks = np.stack(masks, axis=0)
-        return image, torch.tensor(bboxes), torch.tensor(masks).float()
+        return image, torch.tensor(bboxes), torch.tensor(masks).float(),name
 
 
 def collate_fn(batch):
-    images, bboxes, masks = zip(*batch)
+    images, bboxes, masks,name = zip(*batch)
     images = torch.stack(images)
-    return images, bboxes, masks
+    return images, bboxes, masks,name
 
 
 class ResizeAndPad:
@@ -63,7 +64,7 @@ class ResizeAndPad:
         self.transform = ResizeLongestSide(target_size)
         self.to_tensor = transforms.ToTensor()
 
-    def __call__(self, image, masks, bboxes):
+    def __call__(self, image, masks, bboxes,name):
         # Resize image and masks
         og_h, og_w, _ = image.shape
         image = self.transform.apply_image(image)
@@ -84,7 +85,7 @@ class ResizeAndPad:
         bboxes = self.transform.apply_boxes(bboxes, (og_h, og_w))
         bboxes = [[bbox[0] + pad_w, bbox[1] + pad_h, bbox[2] + pad_w, bbox[3] + pad_h] for bbox in bboxes]
 
-        return image, masks, bboxes
+        return image, masks, bboxes,name
 
 
 def load_datasets(cfg, img_size):
