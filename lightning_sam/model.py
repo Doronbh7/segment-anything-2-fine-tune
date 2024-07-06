@@ -3,7 +3,12 @@ import torch.nn.functional as F
 from segment_anything import sam_model_registry
 from segment_anything import SamPredictor
 
+import pickle
+import os
 
+import h5py
+
+import numpy as np
 class Model(nn.Module):
 
     def __init__(self, cfg):
@@ -23,9 +28,21 @@ class Model(nn.Module):
             for param in self.model.mask_decoder.parameters():
                 param.requires_grad = False
 
-    def forward(self, images, bboxes):
+    def forward(self, images, bboxes,name):
         _, _, H, W = images.shape
-        image_embeddings = self.model.image_encoder(images)
+
+##image embedding cache store and load(reduce 90% of training time),works the best with 1 batch
+        file_name=os.path.join(self.cfg.image_embeddings_dir,(str(name)+"_image_embeddings_cache.pkl"))
+
+        if os.path.exists(file_name):
+            with open(file_name, 'rb') as f:
+                image_embeddings = pickle.load(f)
+        else:
+            image_embeddings = self.model.image_encoder(images)
+            with open(file_name, 'wb') as f:
+                pickle.dump(image_embeddings, f)
+
+        #image_embeddings = self.model.image_encoder(images)
         pred_masks = []
         ious = []
         for embedding, bbox in zip(image_embeddings, bboxes):
@@ -56,3 +73,6 @@ class Model(nn.Module):
 
     def get_predictor(self):
         return SamPredictor(self.model)
+
+
+

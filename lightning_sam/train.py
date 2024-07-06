@@ -27,9 +27,9 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
 
     with torch.no_grad():
         for iter, data in enumerate(val_dataloader):
-            images, bboxes, gt_masks = data
+            images, bboxes, gt_masks,name = data
             num_images = images.size(0)
-            pred_masks, _ = model(images, bboxes)
+            pred_masks, _ = model(images, bboxes,name)
             for pred_mask, gt_mask in zip(pred_masks, gt_masks):
                 batch_stats = smp.metrics.get_stats(
                     pred_mask,
@@ -84,9 +84,9 @@ def train_sam(
                 validated = True
 
             data_time.update(time.time() - end)
-            images, bboxes, gt_masks = data
+            images, bboxes, gt_masks,name = data
             batch_size = images.size(0)
-            pred_masks, iou_predictions = model(images, bboxes)
+            pred_masks, iou_predictions = model(images, bboxes,name)
             num_masks = sum(len(pred_mask) for pred_mask in pred_masks)
             loss_focal = torch.tensor(0., device=fabric.device)
             loss_dice = torch.tensor(0., device=fabric.device)

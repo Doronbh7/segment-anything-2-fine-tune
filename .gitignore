@@ -6,6 +6,7 @@ out/
 # C extensions
 *.so
 *.pth
+*.pkl
 # Distribution / packaging
 .Python
 build/
