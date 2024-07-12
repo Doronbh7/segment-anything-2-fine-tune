@@ -1,5 +1,6 @@
 import os
 import time
+import matplotlib.pyplot as plt
 
 import lightning as L
 import segmentation_models_pytorch as smp
@@ -19,6 +20,49 @@ from utils import calc_iou
 
 torch.set_float32_matmul_precision('high')
 
+import os
+import matplotlib.pyplot as plt
+
+
+def save_segmentation(images, pred_masks, gt_masks, name):
+    """Function to save segmentation results as JPG files"""
+    output_dir=cfg.segmentated_validation_images_dir
+    batch_size = images.size(0)
+    for idx in range(batch_size):
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        axes[0].imshow(images[idx].cpu().permute(1, 2, 0))  # Convert CHW to HWC
+        axes[0].set_title('Original Image')
+        axes[0].axis('off')
+
+        # Handle multiple masks by summing them up or taking the first one
+        if pred_masks[idx].dim() == 3:  # (num_masks, H, W)
+            combined_pred_mask = pred_masks[idx].cpu().numpy().sum(axis=0)
+        else:
+            combined_pred_mask = pred_masks[idx].cpu().numpy()
+
+        if gt_masks[idx].dim() == 3:  # (num_masks, H, W)
+            combined_gt_mask = gt_masks[idx].cpu().numpy().sum(axis=0)
+        else:
+            combined_gt_mask = gt_masks[idx].cpu().numpy()
+
+        # Overlay predicted mask
+        axes[1].imshow(images[idx].cpu().permute(1, 2, 0))  # Original image
+        axes[1].imshow(combined_pred_mask, cmap='jet', alpha=0.5)  # Overlay predicted mask
+        axes[1].set_title('Predicted Mask Overlay')
+        axes[1].axis('off')
+
+        # Overlay ground truth mask
+        axes[2].imshow(images[idx].cpu().permute(1, 2, 0))  # Original image
+        axes[2].imshow(combined_gt_mask, cmap='jet', alpha=0.5)  # Overlay ground truth mask
+        axes[2].set_title('Ground Truth Mask Overlay')
+        axes[2].axis('off')
+
+        # Save the figure
+        os.makedirs(output_dir, exist_ok=True)
+        filename = os.path.join(output_dir, f'{name}.jpg')
+        plt.savefig(filename)
+        plt.close(fig)
+
 
 def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: int = 0):
     model.eval()
@@ -27,10 +71,10 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
 
     with torch.no_grad():
         for iter, data in enumerate(val_dataloader):
-            images, bboxes, gt_masks,name = data
+            images, bboxes, gt_masks, name = data
             num_images = images.size(0)
-            pred_masks, _ = model(images, bboxes,name)
-            for pred_mask, gt_mask in zip(pred_masks, gt_masks):
+            pred_masks, _ = model(images, bboxes, name)
+            for idx, (pred_mask, gt_mask) in enumerate(zip(pred_masks, gt_masks)):
                 batch_stats = smp.metrics.get_stats(
                     pred_mask,
                     gt_mask.int(),
@@ -41,6 +85,10 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
                 batch_f1 = smp.metrics.f1_score(*batch_stats, reduction="micro-imagewise")
                 ious.update(batch_iou, num_images)
                 f1_scores.update(batch_f1, num_images)
+
+            # Save the segmentation for the images
+            save_segmentation(images, pred_masks, gt_masks,name)
+
             fabric.print(
                 f'Val: [{epoch}] - [{iter}/{len(val_dataloader)}]: Mean IoU: [{ious.avg:.4f}] -- Mean F1: [{f1_scores.avg:.4f}]'
             )

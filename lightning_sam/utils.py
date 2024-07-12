@@ -85,6 +85,8 @@ def visualize(cfg: Box):
         cv2.imwrite(image_output_path, image_output)
 
 
+
 if __name__ == "__main__":
     from config import cfg
+
     visualize(cfg)

@@ -17,6 +17,7 @@ class Model(nn.Module):
 
     def setup(self):
         self.model = sam_model_registry[self.cfg.model.type](checkpoint=self.cfg.model.checkpoint)
+
         self.model.train()
         if self.cfg.model.freeze.image_encoder:
             for param in self.model.image_encoder.parameters():
@@ -32,12 +33,12 @@ class Model(nn.Module):
         _, _, H, W = images.shape
 
 ##image embedding cache store and load(reduce 90% of training time),works the best with 1 batch
-        file_name=os.path.join(self.cfg.image_embeddings_dir,(str(name)+"_image_embeddings_cache.pkl"))
+        file_name=os.path.join(self.cfg.image_embeddings_dir,(str(name)+"_image_embeddings_cache.pklz"))
 
-        if os.path.exists(file_name):
+        try:
             with open(file_name, 'rb') as f:
                 image_embeddings = pickle.load(f)
-        else:
+        except FileNotFoundError:
             image_embeddings = self.model.image_encoder(images)
             with open(file_name, 'wb') as f:
                 pickle.dump(image_embeddings, f)

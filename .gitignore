@@ -6,9 +6,12 @@ out/
 # C extensions
 *.so
 *.pth
-*.pkl
+*.pklz
+*.jpg
+
 # Distribution / packaging
-.Python
+
+
 build/
 content/
 develop-eggs/
@@ -27,7 +30,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
