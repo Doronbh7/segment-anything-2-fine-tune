@@ -46,7 +46,7 @@ class COCODataset(Dataset):
             centers.append([[x + w / 2, y + h / 2]])
 
         if self.transform:
-            image, masks, bboxes,name, centers = self.transform(image, masks, np.array(bboxes), np.array(centers))
+            image, masks, bboxes,name, centers = self.transform(image, masks, np.array(bboxes),name, np.array(centers))
 
         bboxes = np.stack(bboxes, axis=0)
         masks = np.stack(masks, axis=0)
