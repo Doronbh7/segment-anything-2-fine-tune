@@ -18,11 +18,11 @@ from torch.utils.data import DataLoader
 from utils import AverageMeter
 from utils import calc_iou
 
+
 torch.set_float32_matmul_precision('high')
 
 import os
 import matplotlib.pyplot as plt
-
 
 def save_segmentation(images, pred_masks, gt_masks, name):
     """Function to save segmentation results as JPG files"""
@@ -71,9 +71,9 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
 
     with torch.no_grad():
         for iter, data in enumerate(val_dataloader):
-            images, bboxes, gt_masks, name = data
+            images, bboxes, gt_masks, name, centers = data
             num_images = images.size(0)
-            pred_masks, _ = model(images, bboxes, name)
+            pred_masks, _ = model(images,name,centers=centers)
             for idx, (pred_mask, gt_mask) in enumerate(zip(pred_masks, gt_masks)):
                 batch_stats = smp.metrics.get_stats(
                     pred_mask,
@@ -132,17 +132,17 @@ def train_sam(
                 validated = True
 
             data_time.update(time.time() - end)
-            images, bboxes, gt_masks,name = data
+            images, bboxes, gt_masks,name, centers = data
             batch_size = images.size(0)
-            pred_masks, iou_predictions = model(images, bboxes,name)
+            pred_masks, iou_predictions = model(images,name, centers=centers)
             num_masks = sum(len(pred_mask) for pred_mask in pred_masks)
             loss_focal = torch.tensor(0., device=fabric.device)
             loss_dice = torch.tensor(0., device=fabric.device)
             loss_iou = torch.tensor(0., device=fabric.device)
             for pred_mask, gt_mask, iou_prediction in zip(pred_masks, gt_masks, iou_predictions):
                 batch_iou = calc_iou(pred_mask, gt_mask)
-                loss_focal += focal_loss(pred_mask, gt_mask, num_masks)
-                loss_dice += dice_loss(pred_mask, gt_mask, num_masks)
+                loss_focal += focal_loss(pred_mask, gt_mask)
+                loss_dice += dice_loss(pred_mask, gt_mask)
                 loss_iou += F.mse_loss(iou_prediction, batch_iou, reduction='sum') / num_masks
 
             loss_total = 20. * loss_focal + loss_dice + loss_iou
@@ -161,11 +161,16 @@ def train_sam(
             fabric.print(f'Epoch: [{epoch}][{iter+1}/{len(train_dataloader)}]'
                          f' | Time [{batch_time.val:.3f}s ({batch_time.avg:.3f}s)]'
                          f' | Data [{data_time.val:.3f}s ({data_time.avg:.3f}s)]'
-                         f' | Focal Loss [{focal_losses.val:.4f} ({focal_losses.avg:.4f})]'
-                         f' | Dice Loss [{dice_losses.val:.4f} ({dice_losses.avg:.4f})]'
+                         f' | a Focal Loss [{20. * focal_losses.val:.4f} ({20. * focal_losses.avg:.4f})]'                         f' | Dice Loss [{dice_losses.val:.4f} ({dice_losses.avg:.4f})]'
                          f' | IoU Loss [{iou_losses.val:.4f} ({iou_losses.avg:.4f})]'
                          f' | Total Loss [{total_losses.val:.4f} ({total_losses.avg:.4f})]')
-
+            steps = epoch * len(train_dataloader) + iter
+            log_info = {
+                'Loss': total_losses.val,
+                'alpha focal loss': 20. * focal_losses.val,
+                'dice loss': dice_losses.val,
+            }
+            fabric.log_dict(log_info, step=steps)
 
 def configure_opt(cfg: Box, model: Model):
 

@@ -8,6 +8,12 @@ from model import Model
 from torchvision.utils import draw_bounding_boxes
 from torchvision.utils import draw_segmentation_masks
 from tqdm import tqdm
+import numpy as np
+
+import os
+from matplotlib import pyplot as plt
+import torch
+import cv2
 
 
 class AverageMeter:
@@ -40,7 +46,56 @@ def calc_iou(pred_mask: torch.Tensor, gt_mask: torch.Tensor):
     return batch_iou
 
 
+def show_anns(anns, axes=None):
+    if len(anns) == 0:
+        return
+    if axes:
+        ax = axes
+    else:
+        ax = plt.gca()
+        ax.set_autoscale_on(False)
+    sorted_anns = sorted(anns, key=(lambda x: x['area']), reverse=True)
+    polygons = []
+    color = []
+    for ann in sorted_anns:
+        m = ann['segmentation']
+        img = np.ones((m.shape[0], m.shape[1], 3))
+        color_mask = np.random.random((1, 3)).tolist()[0]
+        for i in range(3):
+            img[:, :, i] = color_mask[i]
+        ax.imshow(np.dstack((img, m * 0.5)))
+
+
+def show_mask(mask, ax, random_color=False):
+    if random_color:
+        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
+    else:
+        color = np.array([30 / 255, 144 / 255, 255 / 255, 0.6])
+    h, w = mask.shape[-2:]
+    mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
+    ax.imshow(mask_image)
+
+
+def show_points(coords, labels, ax, marker_size=375):
+    pos_points = coords[labels == 1]
+    neg_points = coords[labels == 0]
+    ax.scatter(pos_points[:, 0], pos_points[:, 1], color='green', marker='*', s=marker_size, edgecolor='white',
+               linewidth=1.25)
+    ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='*', s=marker_size, edgecolor='white',
+               linewidth=1.25)
+
+
+def show_box(box, ax):
+    x0, y0 = box[0], box[1]
+    w, h = box[2] - box[0], box[3] - box[1]
+    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0, 0, 0, 0), lw=2))
+
+
 def draw_image(image, masks, boxes, labels, alpha=0.4):
+    """plt.imshow(image)
+    show_mask(masks[0], plt.gca())
+    show_box(boxes, plt.gca())
+    plt.show()"""
     image = torch.from_numpy(image).permute(2, 0, 1)
     if boxes is not None:
         image = draw_bounding_boxes(image, boxes, colors=['red'] * len(boxes), labels=labels, width=2)
@@ -68,21 +123,37 @@ def visualize(cfg: Box):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         ann_ids = dataset.coco.getAnnIds(imgIds=image_id)
         anns = dataset.coco.loadAnns(ann_ids)
-        bboxes = []
+        centers = []
+
         for ann in anns:
             x, y, w, h = ann['bbox']
-            bboxes.append([x, y, x + w, y + h])
-        bboxes = torch.as_tensor(bboxes, device=model.model.device)
-        transformed_boxes = predictor.transform.apply_boxes_torch(bboxes, image.shape[:2])
+            centers=np.array([[x + w / 2, y + h / 2]])
+
+
+        input_label = np.array([1])
+
+
         predictor.set_image(image)
-        masks, _, _ = predictor.predict_torch(
-            point_coords=None,
-            point_labels=None,
-            boxes=transformed_boxes,
-            multimask_output=False,
+        plt.imshow(image)
+        show_points(centers, input_label, plt.gca())
+        plt.axis('on')
+        plt.show()
+
+        masks, scores, logits = predictor.predict(
+            point_coords=centers,
+            point_labels=input_label,
+            multimask_output=True,
         )
-        image_output = draw_image(image, masks.squeeze(1), boxes=None, labels=None)
-        cv2.imwrite(image_output_path, image_output)
+
+        for i, (mask, score) in enumerate(zip(masks, scores)):
+            #     plt.figure(figsize=(10,10))
+            plt.imshow(image)
+            show_mask(mask, plt.gca())
+            show_points(centers, input_label, plt.gca())
+            plt.title(f"Mask {i + 1}, Score: {score:.3f}", fontsize=18)
+            plt.show()
+
+
 
 
 

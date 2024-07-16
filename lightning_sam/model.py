@@ -29,7 +29,10 @@ class Model(nn.Module):
             for param in self.model.mask_decoder.parameters():
                 param.requires_grad = False
 
-    def forward(self, images, bboxes,name):
+    def forward(self, images,name, bboxes=None, centers=None):
+        if not bboxes and not centers:
+            raise ValueError("Either bboxes or centers must be provided")
+
         _, _, H, W = images.shape
 
 ##image embedding cache store and load(reduce 90% of training time),works the best with 1 batch
@@ -46,9 +49,13 @@ class Model(nn.Module):
         #image_embeddings = self.model.image_encoder(images)
         pred_masks = []
         ious = []
-        for embedding, bbox in zip(image_embeddings, bboxes):
+        if not centers:
+            centers = [None] * len(bboxes)
+        if not bboxes:
+            bboxes = [None] * len(centers)
+        for embedding, bbox, center in zip(image_embeddings, bboxes, centers):
             sparse_embeddings, dense_embeddings = self.model.prompt_encoder(
-                points=None,
+                points=center,
                 boxes=bbox,
                 masks=None,
             )

@@ -36,25 +36,30 @@ class COCODataset(Dataset):
         anns = self.coco.loadAnns(ann_ids)
         bboxes = []
         masks = []
+        centers = []
 
         for ann in anns:
             x, y, w, h = ann['bbox']
             bboxes.append([x, y, x + w, y + h])
             mask = self.coco.annToMask(ann)
             masks.append(mask)
+            centers.append([[x + w / 2, y + h / 2]])
 
         if self.transform:
-            image, masks, bboxes,name = self.transform(image, masks, np.array(bboxes),name)
+            image, masks, bboxes,name, centers = self.transform(image, masks, np.array(bboxes), np.array(centers))
 
         bboxes = np.stack(bboxes, axis=0)
         masks = np.stack(masks, axis=0)
-        return image, torch.tensor(bboxes), torch.tensor(masks).float(),name
+        centers = np.stack(centers, axis=0)
+        labels = np.ones((len(centers), 1))
+        labels_torch = torch.as_tensor(labels, dtype=torch.int)  # @TODO should increase dim?
+        return image, torch.tensor(bboxes), torch.tensor(masks).float(),name, (torch.tensor(centers), labels_torch)
 
 
 def collate_fn(batch):
-    images, bboxes, masks,name = zip(*batch)
+    images, bboxes, masks,name, centers = zip(*batch)
     images = torch.stack(images)
-    return images, bboxes, masks,name
+    return images, bboxes, masks,name, centers
 
 
 class ResizeAndPad:
@@ -64,7 +69,7 @@ class ResizeAndPad:
         self.transform = ResizeLongestSide(target_size)
         self.to_tensor = transforms.ToTensor()
 
-    def __call__(self, image, masks, bboxes,name):
+    def __call__(self, image, masks, bboxes,name, coords):
         # Resize image and masks
         og_h, og_w, _ = image.shape
         image = self.transform.apply_image(image)
@@ -85,7 +90,11 @@ class ResizeAndPad:
         bboxes = self.transform.apply_boxes(bboxes, (og_h, og_w))
         bboxes = [[bbox[0] + pad_w, bbox[1] + pad_h, bbox[2] + pad_w, bbox[3] + pad_h] for bbox in bboxes]
 
-        return image, masks, bboxes,name
+        coords = self.transform.apply_coords(coords, (og_h, og_w))
+        coords[..., 0] += pad_w
+        coords[..., 1] += pad_h
+
+        return image, masks, bboxes,name, coords
 
 
 def load_datasets(cfg, img_size):
