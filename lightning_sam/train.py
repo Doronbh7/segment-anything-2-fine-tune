@@ -23,8 +23,17 @@ torch.set_float32_matmul_precision('high')
 
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 
-def save_segmentation(images, pred_masks, gt_masks, name):
+
+def show_points(coords, labels, ax, marker_size=375):
+    pos_points = coords[labels == 1]
+    neg_points = coords[labels == 0]
+    ax.scatter(pos_points[:, 0], pos_points[:, 1], color='green', marker='*', s=marker_size, edgecolor='white',
+               linewidth=1.25)
+    ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='*', s=marker_size, edgecolor='white',
+               linewidth=1.25)
+def save_segmentation(images, pred_masks, gt_masks, name,centers):
     """Function to save segmentation results as JPG files"""
     output_dir=cfg.segmentated_validation_images_dir
     batch_size = images.size(0)
@@ -46,7 +55,11 @@ def save_segmentation(images, pred_masks, gt_masks, name):
             combined_gt_mask = gt_masks[idx].cpu().numpy()
 
         # Overlay predicted mask
+        input_label = np.array([1])
+
         axes[1].imshow(images[idx].cpu().permute(1, 2, 0))  # Original image
+        show_points(centers[idx][0].cpu().permute(1, 2, 0), input_label, axes[1]) #show points on image
+
         axes[1].imshow(combined_pred_mask, cmap='jet', alpha=0.5)  # Overlay predicted mask
         axes[1].set_title('Predicted Mask Overlay')
         axes[1].axis('off')
@@ -87,7 +100,7 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
                 f1_scores.update(batch_f1, num_images)
 
             # Save the segmentation for the images
-            save_segmentation(images, pred_masks, gt_masks,name)
+            save_segmentation(images, pred_masks, gt_masks,name,centers)
 
             fabric.print(
                 f'Val: [{epoch}] - [{iter}/{len(val_dataloader)}]: Mean IoU: [{ious.avg:.4f}] -- Mean F1: [{f1_scores.avg:.4f}]'

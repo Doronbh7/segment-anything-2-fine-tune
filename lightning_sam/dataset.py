@@ -52,7 +52,7 @@ class COCODataset(Dataset):
         masks = np.stack(masks, axis=0)
         centers = np.stack(centers, axis=0)
         labels = np.ones((len(centers), 1))
-        labels_torch = torch.as_tensor(labels, dtype=torch.int)  # @TODO should increase dim?
+        labels_torch = torch.as_tensor(labels, dtype=torch.int)
         return image, torch.tensor(bboxes), torch.tensor(masks).float(),name, (torch.tensor(centers), labels_torch)
 
 

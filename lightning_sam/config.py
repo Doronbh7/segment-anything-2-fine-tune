@@ -4,8 +4,8 @@ config = {
     "num_devices": 1,
     "batch_size": 1,
     "num_workers": 4,
-    "num_epochs": 15,
-    "eval_interval": 5,
+    "num_epochs": 1,
+    "eval_interval": 1,
     "out_dir": "out/training",
     "image_embeddings_dir":"/home/user_218/SAM_Project/SAM-ARMBench/lightning_sam/Image_embeddings",
     "segmentated_validation_images_dir":"/home/user_218/SAM_Project/SAM-ARMBench/lightning_sam/segmentation_results",
@@ -18,7 +18,7 @@ config = {
     },
     "model": {
         "type": 'vit_h',
-        "checkpoint":"/home/user_218/SAM_Project/SAM-ARMBench/lightning_sam/sam_vit_h_4b8939.pth",
+        "checkpoint":"/home/user_218/SAM_Project/SAM-ARMBench/lightning_sam/out/training/epoch-000010-f10.77-ckpt.pth",
         "freeze": {
             "image_encoder": True,
             "prompt_encoder": True,
