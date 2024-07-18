@@ -33,49 +33,54 @@ def show_points(coords, labels, ax, marker_size=375):
                linewidth=1.25)
     ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='*', s=marker_size, edgecolor='white',
                linewidth=1.25)
-def save_segmentation(images, pred_masks, gt_masks, name,centers):
+
+
+def save_segmentation(images, pred_masks, gt_masks, name, centers):
     """Function to save segmentation results as JPG files"""
-    output_dir=cfg.segmentated_validation_images_dir
+    output_dir = cfg.segmentated_validation_images_dir
     batch_size = images.size(0)
+    colors = ['red', 'green', 'blue', 'yellow', 'purple', 'cyan', 'magenta', 'orange', 'lime', 'pink']
+
     for idx in range(batch_size):
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        axes[0].imshow(images[idx].cpu().permute(1, 2, 0))  # Convert CHW to HWC
+        fig, axes = plt.subplots(1, 4, figsize=(15, 5))
+        axes[0].imshow(images[idx].cpu().permute(1, 2, 0))
         axes[0].set_title('Original Image')
         axes[0].axis('off')
 
-        # Handle multiple masks by summing them up or taking the first one
-        if pred_masks[idx].dim() == 3:  # (num_masks, H, W)
-            combined_pred_mask = pred_masks[idx].cpu().numpy().sum(axis=0)
-        else:
-            combined_pred_mask = pred_masks[idx].cpu().numpy()
+        pred_overlay = images[idx].cpu().permute(1, 2, 0).numpy().copy()
+        gt_overlay = images[idx].cpu().permute(1, 2, 0).numpy().copy()
 
-        if gt_masks[idx].dim() == 3:  # (num_masks, H, W)
-            combined_gt_mask = gt_masks[idx].cpu().numpy().sum(axis=0)
-        else:
-            combined_gt_mask = gt_masks[idx].cpu().numpy()
+        for mask_idx in range(pred_masks[idx].size(0)):
+            pred_mask = pred_masks[idx][mask_idx].cpu().numpy()
+            gt_mask = gt_masks[idx][mask_idx].cpu().numpy()
+            color = plt.get_cmap('tab10')(mask_idx % len(colors))
 
-        # Overlay predicted mask
+            pred_overlay[pred_mask > 0.5] = (1 - 0.5) * pred_overlay[pred_mask > 0.5] + 0.5 * np.array(color[:3])
+            gt_overlay[gt_mask > 0.5] = (1 - 0.5) * gt_overlay[gt_mask > 0.5] + 0.5 * np.array(color[:3])
+
+        axes[1].imshow(pred_overlay)
         input_label = np.array([1])
 
-        axes[1].imshow(images[idx].cpu().permute(1, 2, 0))  # Original image
-        show_points(centers[idx][0].cpu().permute(1, 2, 0), input_label, axes[1]) #show points on image
+        show_points(centers[idx][0].cpu().permute(1, 2, 0), input_label, axes[1])
 
-        axes[1].imshow(combined_pred_mask, cmap='jet', alpha=0.5)  # Overlay predicted mask
-        axes[1].set_title('Predicted Mask Overlay')
+        axes[1].set_title('Predicted Mask with the points prompt')
         axes[1].axis('off')
 
-        # Overlay ground truth mask
-        axes[2].imshow(images[idx].cpu().permute(1, 2, 0))  # Original image
-        axes[2].imshow(combined_gt_mask, cmap='jet', alpha=0.5)  # Overlay ground truth mask
-        axes[2].set_title('Ground Truth Mask Overlay')
+        axes[2].imshow(pred_overlay)
+
+
+        axes[2].set_title('Predicted Mask Overlay')
         axes[2].axis('off')
+
+        axes[3].imshow(gt_overlay)
+        axes[3].set_title('Ground Truth Mask Overlay')
+        axes[3].axis('off')
 
         # Save the figure
         os.makedirs(output_dir, exist_ok=True)
-        filename = os.path.join(output_dir, f'{name}.jpg')
+        filename = os.path.join(output_dir, f'{name[idx]}.jpg')
         plt.savefig(filename)
         plt.close(fig)
-
 
 def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: int = 0):
     model.eval()
