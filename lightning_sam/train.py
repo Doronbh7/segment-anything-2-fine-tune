@@ -26,6 +26,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+def show_box(box, ax):
+    x0, y0 = box[0], box[1]
+    w, h = box[2] - box[0], box[3] - box[1]
+    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0, 0, 0, 0), lw=2))
+
 def show_points(coords, labels, ax, marker_size=375):
     pos_points = coords[labels == 1]
     neg_points = coords[labels == 0]
@@ -35,7 +40,7 @@ def show_points(coords, labels, ax, marker_size=375):
                linewidth=1.25)
 
 
-def save_segmentation(images, pred_masks, gt_masks, name, centers):
+def save_segmentation(images, pred_masks, gt_masks, name, centers,bboxes):
     """Function to save segmentation results as JPG files"""
     output_dir = cfg.segmentated_validation_images_dir
     batch_size = images.size(0)
@@ -61,9 +66,13 @@ def save_segmentation(images, pred_masks, gt_masks, name, centers):
         axes[1].imshow(pred_overlay)
         input_label = np.array([1])
 
-        show_points(centers[idx][0].cpu().permute(1, 2, 0), input_label, axes[1])
+        if (cfg.prompt_type == "bounding_box"):
+            for i in range(len(bboxes[idx])):
+                show_box(bboxes[idx][i].cpu(), axes[1])
+        if (cfg.prompt_type == "points"):
+            show_points(centers[idx][0].cpu().permute(1, 2, 0), input_label, axes[1])
 
-        axes[1].set_title('Predicted Mask with the points prompt')
+        axes[1].set_title('Predicted Mask with the prompt')
         axes[1].axis('off')
 
         axes[2].imshow(pred_overlay)
@@ -91,7 +100,11 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
         for iter, data in enumerate(val_dataloader):
             images, bboxes, gt_masks, name, centers = data
             num_images = images.size(0)
-            pred_masks, _ = model(images,name,centers=centers)
+
+            if (cfg.prompt_type == "bounding_box"):
+                pred_masks, _ = model(images, name, bboxes=bboxes)
+            if(cfg.prompt_type=="points"):
+                pred_masks, _ = model(images,name,centers=centers)
             for idx, (pred_mask, gt_mask) in enumerate(zip(pred_masks, gt_masks)):
                 batch_stats = smp.metrics.get_stats(
                     pred_mask,
@@ -105,7 +118,7 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
                 f1_scores.update(batch_f1, num_images)
 
             # Save the segmentation for the images
-            save_segmentation(images, pred_masks, gt_masks,name,centers)
+            save_segmentation(images, pred_masks, gt_masks,name,centers,bboxes)
 
             fabric.print(
                 f'Val: [{epoch}] - [{iter}/{len(val_dataloader)}]: Mean IoU: [{ious.avg:.4f}] -- Mean F1: [{f1_scores.avg:.4f}]'
@@ -152,7 +165,11 @@ def train_sam(
             data_time.update(time.time() - end)
             images, bboxes, gt_masks,name, centers = data
             batch_size = images.size(0)
-            pred_masks, iou_predictions = model(images,name, centers=centers)
+
+            if (cfg.prompt_type == "bounding_box"):
+                pred_masks, iou_predictions = model(images, name, bboxes=bboxes)
+            if (cfg.prompt_type == "points"):
+                pred_masks, iou_predictions = model(images, name, centers=centers)
             num_masks = sum(len(pred_mask) for pred_mask in pred_masks)
             loss_focal = torch.tensor(0., device=fabric.device)
             loss_dice = torch.tensor(0., device=fabric.device)

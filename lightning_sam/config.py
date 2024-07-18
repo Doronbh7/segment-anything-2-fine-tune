@@ -4,11 +4,12 @@ config = {
     "num_devices": 1,
     "batch_size": 1,
     "num_workers": 4,
-    "num_epochs": 1,
-    "eval_interval": 1,
+    "num_epochs": 5,
+    "eval_interval": 5,
     "out_dir": "out/training",
     "image_embeddings_dir":"/home/user_218/SAM_Project/SAM-ARMBench/lightning_sam/Image_embeddings",
     "segmentated_validation_images_dir":"/home/user_218/SAM_Project/SAM-ARMBench/lightning_sam/segmentation_results",
+    "prompt_type":"points",#points/bounding_box
     "opt": {
         "learning_rate": 5e-4,
         "weight_decay": 1e-4,
