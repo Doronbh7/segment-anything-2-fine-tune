@@ -47,21 +47,28 @@ def save_segmentation(images, pred_masks, gt_masks, name, centers,bboxes):
     colors = ['red', 'green', 'blue', 'yellow', 'purple', 'cyan', 'magenta', 'orange', 'lime', 'pink']
 
     for idx in range(batch_size):
-        fig, axes = plt.subplots(1, 4, figsize=(15, 5))
+        if(cfg.prompt_type == "grid_prompt"):
+            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        else:
+            fig, axes = plt.subplots(1, 4, figsize=(15, 5))
         axes[0].imshow(images[idx].cpu().permute(1, 2, 0))
         axes[0].set_title('Original Image')
         axes[0].axis('off')
 
         pred_overlay = images[idx].cpu().permute(1, 2, 0).numpy().copy()
-        gt_overlay = images[idx].cpu().permute(1, 2, 0).numpy().copy()
+
+        if (cfg.prompt_type != "grid_prompt"):
+            gt_overlay = images[idx].cpu().permute(1, 2, 0).numpy().copy()
 
         for mask_idx in range(pred_masks[idx].size(0)):
             pred_mask = pred_masks[idx][mask_idx].cpu().numpy()
-            gt_mask = gt_masks[idx][mask_idx].cpu().numpy()
+            if (cfg.prompt_type != "grid_prompt"):
+                gt_mask = gt_masks[idx][mask_idx].cpu().numpy()
             color = plt.get_cmap('tab10')(mask_idx % len(colors))
 
             pred_overlay[pred_mask > 0.5] = (1 - 0.5) * pred_overlay[pred_mask > 0.5] + 0.5 * np.array(color[:3])
-            gt_overlay[gt_mask > 0.5] = (1 - 0.5) * gt_overlay[gt_mask > 0.5] + 0.5 * np.array(color[:3])
+            if (cfg.prompt_type != "grid_prompt"):
+                gt_overlay[gt_mask > 0.5] = (1 - 0.5) * gt_overlay[gt_mask > 0.5] + 0.5 * np.array(color[:3])
 
         axes[1].imshow(pred_overlay)
         input_label = np.array([1])
@@ -70,6 +77,8 @@ def save_segmentation(images, pred_masks, gt_masks, name, centers,bboxes):
             for i in range(len(bboxes[idx])):
                 show_box(bboxes[idx][i].cpu(), axes[1])
         if (cfg.prompt_type == "points"):
+            show_points(centers[idx][0].cpu().permute(1, 2, 0), input_label, axes[1])
+        if (cfg.prompt_type == "grid_prompt"):
             show_points(centers[idx][0].cpu().permute(1, 2, 0), input_label, axes[1])
 
         axes[1].set_title('Predicted Mask with the prompt')
@@ -81,9 +90,10 @@ def save_segmentation(images, pred_masks, gt_masks, name, centers,bboxes):
         axes[2].set_title('Predicted Mask Overlay')
         axes[2].axis('off')
 
-        axes[3].imshow(gt_overlay)
-        axes[3].set_title('Ground Truth Mask Overlay')
-        axes[3].axis('off')
+        if(cfg.prompt_type != "grid_prompt"):
+            axes[3].imshow(gt_overlay)
+            axes[3].set_title('Ground Truth Mask Overlay')
+            axes[3].axis('off')
 
         # Save the figure
         os.makedirs(output_dir, exist_ok=True)
@@ -103,19 +113,34 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
 
             if (cfg.prompt_type == "bounding_box"):
                 pred_masks, _ = model(images, name, bboxes=bboxes)
+                for idx, (pred_mask, gt_mask) in enumerate(zip(pred_masks, gt_masks)):
+                    batch_stats = smp.metrics.get_stats(
+                        pred_mask,
+                        gt_mask.int(),
+                        mode='binary',
+                        threshold=0.5,
+                    )
+                    batch_iou = smp.metrics.iou_score(*batch_stats, reduction="micro-imagewise")
+                    batch_f1 = smp.metrics.f1_score(*batch_stats, reduction="micro-imagewise")
+                    ious.update(batch_iou, num_images)
+                    f1_scores.update(batch_f1, num_images)
+
             if(cfg.prompt_type=="points"):
                 pred_masks, _ = model(images,name,centers=centers)
-            for idx, (pred_mask, gt_mask) in enumerate(zip(pred_masks, gt_masks)):
-                batch_stats = smp.metrics.get_stats(
-                    pred_mask,
-                    gt_mask.int(),
-                    mode='binary',
-                    threshold=0.5,
-                )
-                batch_iou = smp.metrics.iou_score(*batch_stats, reduction="micro-imagewise")
-                batch_f1 = smp.metrics.f1_score(*batch_stats, reduction="micro-imagewise")
-                ious.update(batch_iou, num_images)
-                f1_scores.update(batch_f1, num_images)
+                for idx, (pred_mask, gt_mask) in enumerate(zip(pred_masks, gt_masks)):
+                    batch_stats = smp.metrics.get_stats(
+                        pred_mask,
+                        gt_mask.int(),
+                        mode='binary',
+                        threshold=0.5,
+                    )
+                    batch_iou = smp.metrics.iou_score(*batch_stats, reduction="micro-imagewise")
+                    batch_f1 = smp.metrics.f1_score(*batch_stats, reduction="micro-imagewise")
+                    ious.update(batch_iou, num_images)
+                    f1_scores.update(batch_f1, num_images)
+
+            if (cfg.prompt_type == "grid_prompt"):
+                pred_masks, _ = model(images, name, centers=centers)
 
             # Save the segmentation for the images
             save_segmentation(images, pred_masks, gt_masks,name,centers,bboxes)

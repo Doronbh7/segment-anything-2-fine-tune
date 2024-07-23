@@ -5,9 +5,11 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 from pycocotools.coco import COCO
-from segment_anything.utils.transforms import ResizeLongestSide
+from MobileSam.mobile_sam.utils.transforms import ResizeLongestSide
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
+from amg import build_all_layer_point_grids
+from config import cfg
 
 
 class COCODataset(Dataset):
@@ -50,6 +52,10 @@ class COCODataset(Dataset):
 
         bboxes = np.stack(bboxes, axis=0)
         masks = np.stack(masks, axis=0)
+        if(cfg.prompt_type=="grid_prompt"):
+            temp = build_all_layer_point_grids(16, 0, 1)[0] * 1024
+            centers = [[[x, y]] for x, y in temp]
+
         centers = np.stack(centers, axis=0)
         labels = np.ones((len(centers), 1))
         labels_torch = torch.as_tensor(labels, dtype=torch.int)

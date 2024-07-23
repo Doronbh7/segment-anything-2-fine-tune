@@ -1,7 +1,8 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from segment_anything import sam_model_registry
-from segment_anything import SamPredictor
+
+from MobileSam.mobile_sam import sam_model_registry
+from MobileSam.mobile_sam import SamPredictor
 
 import pickle
 import os

@@ -16,6 +16,7 @@ import torch
 import cv2
 
 
+
 class AverageMeter:
     """Computes and stores the average and current value."""
 
@@ -33,7 +34,6 @@ class AverageMeter:
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
-
 
 def calc_iou(pred_mask: torch.Tensor, gt_mask: torch.Tensor):
     pred_mask = (pred_mask >= 0.5).float()
@@ -104,6 +104,9 @@ def draw_image(image, masks, boxes, labels, alpha=0.4):
     return image.numpy().transpose(1, 2, 0)
 
 
+
+
+
 def visualize(cfg: Box):
     model = Model(cfg)
     model.setup()
@@ -112,46 +115,22 @@ def visualize(cfg: Box):
     dataset = COCODataset(root_dir=cfg.dataset.val.root_dir,
                           annotation_file=cfg.dataset.val.annotation_file,
                           transform=None)
-    predictor = model.get_predictor()
+    #predictor = model.get_predictor()
     os.makedirs(cfg.out_dir, exist_ok=True)
 
-    for image_id in tqdm(dataset.image_ids):
-        image_info = dataset.coco.loadImgs(image_id)[0]
-        image_path = os.path.join(dataset.root_dir, image_info['file_name'])
-        image_output_path = os.path.join(cfg.out_dir, image_info['file_name'])
-        image = cv2.imread(image_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        ann_ids = dataset.coco.getAnnIds(imgIds=image_id)
-        anns = dataset.coco.loadAnns(ann_ids)
-        centers = []
+    images, bboxes, gt_masks,name, centers=dataset
+    pred_masks, iou_predictions = model(images, name, centers=centers)
 
-        for ann in anns:
-            x, y, w, h = ann['bbox']
-            centers=np.array([[x + w / 2, y + h / 2]])
+    plt.figure(figsize=(20, 20))
+    plt.imshow(image)
+    show_anns(masks)
+    plt.axis('off')
+    plt.show()
 
 
-        input_label = np.array([1])
 
 
-        predictor.set_image(image)
-        plt.imshow(image)
-        show_points(centers, input_label, plt.gca())
-        plt.axis('on')
-        plt.show()
 
-        masks, scores, logits = predictor.predict(
-            point_coords=centers,
-            point_labels=input_label,
-            multimask_output=True,
-        )
-
-        for i, (mask, score) in enumerate(zip(masks, scores)):
-            #     plt.figure(figsize=(10,10))
-            plt.imshow(image)
-            show_mask(mask, plt.gca())
-            show_points(centers, input_label, plt.gca())
-            plt.title(f"Mask {i + 1}, Score: {score:.3f}", fontsize=18)
-            plt.show()
 
 
 
