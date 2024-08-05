@@ -20,7 +20,7 @@ class Model(nn.Module):
         self.predictor=None
 
     def setup(self):
-        self.model = build_sam2(self.cfg.model.type, self.cfg.model.checkpoint)
+        self.model = build_sam2(self.cfg.model.type, self.cfg.model.base_model_checkpoint)
         self.predictor=SAM2ImagePredictor(self.model)
         self.predictor.model.load_state_dict(torch.load(self.cfg.model.fine_tuned_checkpoint))
 
