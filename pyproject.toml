@@ -1,15 +1,16 @@
 [tool.poetry]
-name = "segment-anything-2-finetune"
+name = "lightning-sam"
 version = "0.1.0"
-description = "Finetune segment-anything V2"
+description = "Finetune segment-anything"
 readme = "README.md"
 documentation = ""
-repository = "https://github.com/Doronbh7/SAM-ARMBench"
+repository = "https://github.com/luca-medeiros/lightning-sam"
 authors = [
+  "Luca Medeiros <lucamedeiros@outlook.com>",
 ]
 license = "LICENSE"
 packages = [
-    { include = "SAM_V2_Train" },
+    { include = "lightning_sam" },
 ]
 
 [tool.poetry.dependencies]
@@ -23,7 +24,7 @@ torch = "^2.0.0"
 torchvision = "^0.15.1"
 lightning = "^2.0.1"
 segmentation-models-pytorch = "^0.3.2"
-segment-anything = {git = "https://github.com/facebookresearch/segment-anything-2"}
+segment-anything = {git = "https://github.com/facebookresearch/segment-anything.git"}
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^2.20.0"
