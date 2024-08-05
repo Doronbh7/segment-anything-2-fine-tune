@@ -1,3 +1,6 @@
+## segment-anything-2-finetune Project
+
+This project is designed to train and evaluate a segmentation model using the Meta's segment-anything-2. 
 
 # Segment-Anything-2-Finetune Project
 
