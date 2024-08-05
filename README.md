@@ -19,7 +19,7 @@ Welcome to the Segment-Anything-2-Finetune project! This repository is designed 
 **2.Run Training**:
     Run the train.py file to start training.
 
-Special thanks to [luca-medeiros](https://github.com/luca-medeiros). His code was the base for this project.
+Special thanks to [luca-medeiros](https://github.com/luca-medeiros) and [sagieppel](https://github.com/sagieppel).  Their code served as the base for this project.
 
 ## Resources
 
