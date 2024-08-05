@@ -1,9 +1,11 @@
 import torch.nn as nn
+import torch
 import torch.nn.functional as F
-
-from MobileSam.mobile_sam import sam_model_registry
-from MobileSam.mobile_sam import SamPredictor
-
+from PIL import Image
+import matplotlib.pyplot as plt
+from sam2.build_sam import build_sam2
+from sam2.sam2_image_predictor import SAM2ImagePredictor
+from torchvision import transforms
 import pickle
 import os
 
@@ -15,37 +17,32 @@ class Model(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
+        self.predictor=None
 
     def setup(self):
-        self.model = sam_model_registry[self.cfg.model.type](checkpoint=self.cfg.model.checkpoint)
+        self.model = build_sam2(self.cfg.model.type, self.cfg.model.checkpoint)
+        self.predictor=SAM2ImagePredictor(self.model)
+        #if self.cfg.model.freeze.image_encoder:
+         #   self.get_predictor().sam_image_encoder.train(True)
 
-        self.model.train()
-        if self.cfg.model.freeze.image_encoder:
-            for param in self.model.image_encoder.parameters():
-                param.requires_grad = False
         if self.cfg.model.freeze.prompt_encoder:
-            for param in self.model.prompt_encoder.parameters():
-                param.requires_grad = False
+            self.predictor.model.sam_prompt_encoder.train(True)
         if self.cfg.model.freeze.mask_decoder:
-            for param in self.model.mask_decoder.parameters():
-                param.requires_grad = False
+            self.predictor.model.sam_mask_decoder.train(True)
+
 
     def forward(self, images,name, bboxes=None, centers=None):
         if not bboxes and not centers:
             raise ValueError("Either bboxes or centers must be provided")
 
-        _, _, H, W = images.shape
 
 ##image embedding cache store and load(reduce 90% of training time),works the best with 1 batch
         file_name=os.path.join(self.cfg.image_embeddings_dir,(str(name)+"_image_embeddings_cache.pklz"))
+        predictor=self.predictor
 
-        try:
-            with open(file_name, 'rb') as f:
-                image_embeddings = pickle.load(f)
-        except FileNotFoundError:
-            image_embeddings = self.model.image_encoder(images)
-            with open(file_name, 'wb') as f:
-                pickle.dump(image_embeddings, f)
+
+        predictor.set_image(images)
+
 
         #image_embeddings = self.model.image_encoder(images)
         pred_masks = []
@@ -54,34 +51,44 @@ class Model(nn.Module):
             centers = [None] * len(bboxes)
         if not bboxes:
             bboxes = [None] * len(centers)
-        for embedding, bbox, center in zip(image_embeddings, bboxes, centers):
-            sparse_embeddings, dense_embeddings = self.model.prompt_encoder(
-                points=center,
-                boxes=bbox,
-                masks=None,
-            )
+        H, W = images.size
+        for  bbox, center in zip( bboxes, centers):
+            if(self.cfg.prompt_type=="points"):
+                mask_input, unnorm_coords, labels, unnorm_box = predictor._prep_prompts(center[0], center[1], box=None,
+                                                                                        mask_logits=None,
+                                                                                        normalize_coords=True)
+                sparse_embeddings, dense_embeddings = predictor.model.sam_prompt_encoder(points=(unnorm_coords, labels),
+                                                                                         boxes=None, masks=None, )
+                batched_mode = unnorm_coords.shape[0] > 1  # multi object prediction
 
-            low_res_masks, iou_predictions = self.model.mask_decoder(
-                image_embeddings=embedding.unsqueeze(0),
-                image_pe=self.model.prompt_encoder.get_dense_pe(),
-                sparse_prompt_embeddings=sparse_embeddings,
-                dense_prompt_embeddings=dense_embeddings,
-                multimask_output=False,
-            )
+            elif(self.cfg.prompt_type=="bounding_box"):
+                mask_input, unnorm_coords, labels, unnorm_box = predictor._prep_prompts(None,None, box=bbox,
+                                                                                        mask_logits=None,
+                                                                                        normalize_coords=True)
+                sparse_embeddings, dense_embeddings = predictor.model.sam_prompt_encoder(points=None,
+                                                                                         boxes=bbox, masks=None, )
+                batched_mode = unnorm_box.shape[0] > 1  # multi object prediction
 
-            masks = F.interpolate(
+            high_res_features = [feat_level[-1].unsqueeze(0) for feat_level in predictor._features["high_res_feats"]]
+            low_res_masks, prd_scores, _, _ = predictor.model.sam_mask_decoder(image_embeddings=predictor._features["image_embed"][-1].unsqueeze(0),image_pe=predictor.model.sam_prompt_encoder.get_dense_pe(),sparse_prompt_embeddings=sparse_embeddings,dense_prompt_embeddings=dense_embeddings,multimask_output=True,repeat_image=batched_mode,high_res_features=high_res_features,)
+            prd_masks = predictor._transforms.postprocess_masks(low_res_masks, predictor._orig_hw[-1])# Upscale the masks to the original image resolution
+
+            # Convert the tensor to a NumPy array
+
+            # Display the first mask
+
+            """masks = F.interpolate(
                 low_res_masks,
-                (H, W),
+                (W, H),
                 mode="bilinear",
                 align_corners=False,
-            )
-            pred_masks.append(masks.squeeze(1))
-            ious.append(iou_predictions)
+            )"""
+            pred_masks.append(prd_masks.squeeze(1))
+            ious.append(prd_scores)
 
         return pred_masks, ious
 
-    def get_predictor(self):
-        return SamPredictor(self.model)
+
 
 
 

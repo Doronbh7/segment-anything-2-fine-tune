@@ -1,11 +1,15 @@
 import os
 
+
+from PIL import Image
+from torchvision.transforms.functional import resize, to_pil_image  # type: ignore
+
 import cv2
 import numpy as np
 import torch
 import torchvision.transforms as transforms
 from pycocotools.coco import COCO
-from MobileSam.mobile_sam.utils.transforms import ResizeLongestSide
+from segment_anything.utils.transforms import ResizeLongestSide
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from amg import build_all_layer_point_grids
@@ -33,7 +37,7 @@ class COCODataset(Dataset):
         image_path = os.path.join(self.root_dir, image_info['file_name'])
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
+        image = Image.fromarray(image)
         ann_ids = self.coco.getAnnIds(imgIds=image_id)
         anns = self.coco.loadAnns(ann_ids)
         bboxes = []
@@ -59,12 +63,15 @@ class COCODataset(Dataset):
         centers = np.stack(centers, axis=0)
         labels = np.ones((len(centers), 1))
         labels_torch = torch.as_tensor(labels, dtype=torch.int)
+
         return image, torch.tensor(bboxes), torch.tensor(masks).float(),name, (torch.tensor(centers), labels_torch)
 
 
 def collate_fn(batch):
     images, bboxes, masks,name, centers = zip(*batch)
-    images = torch.stack(images)
+    temp=images[0]
+    images=temp
+
     return images, bboxes, masks,name, centers
 
 
@@ -77,20 +84,40 @@ class ResizeAndPad:
 
     def __call__(self, image, masks, bboxes,name, coords):
         # Resize image and masks
-        og_h, og_w, _ = image.shape
-        image = self.transform.apply_image(image)
-        masks = [torch.tensor(self.transform.apply_image(mask)) for mask in masks]
-        image = self.to_tensor(image)
+
+        og_w, og_h = image.size
+        scale = self.target_size * 1.0 / max(og_h, og_w)
+        newh, neww = og_h * scale, og_w * scale
+        neww = int(neww + 0.5)
+        newh = int(newh + 0.5)
+        image=resize(image, (newh, neww))
+
+
+        new_masks = []
+        for mask in masks:
+            og_h, og_w = mask.shape
+
+            scale = self.target_size * 1.0 / max(og_h, og_w)
+            newh, neww = og_h * scale, og_w * scale
+            neww = int(neww + 0.5)
+            newh = int(newh + 0.5)
+            mask = resize(to_pil_image(mask), (newh, neww))
+
+            new_masks.append(mask)
+
+
 
         # Pad image and masks to form a square
-        _, h, w = image.shape
+        w,h = image.size
+
         max_dim = max(w, h)
         pad_w = (max_dim - w) // 2
         pad_h = (max_dim - h) // 2
 
         padding = (pad_w, pad_h, max_dim - w - pad_w, max_dim - h - pad_h)
         image = transforms.Pad(padding)(image)
-        masks = [transforms.Pad(padding)(mask) for mask in masks]
+
+        masks = [transforms.Pad(padding)(mask) for mask in new_masks]
 
         # Adjust bounding boxes
         bboxes = self.transform.apply_boxes(bboxes, (og_h, og_w))

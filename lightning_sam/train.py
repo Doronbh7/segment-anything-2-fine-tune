@@ -1,6 +1,7 @@
 import os
 import time
 import matplotlib.pyplot as plt
+from torchvision.transforms.functional import resize, to_tensor,to_pil_image  # type: ignore
 
 import lightning as L
 import segmentation_models_pytorch as smp
@@ -25,6 +26,22 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
+#return the mask with the best score .return (mask,score)
+def best_score_mask(masks,scores):
+    num_columns = masks.shape[0]
+    for col_idx in range(num_columns):
+        mask=masks[col_idx,:,:]
+        score=scores[col_idx]
+
+        if col_idx==0:
+            best_score = score
+            best_mask = mask
+        else:
+            if score > best_score:
+                best_score = score
+                best_mask = mask
+    return best_mask,best_score
+
 
 def show_box(box, ax):
     x0, y0 = box[0], box[1]
@@ -40,66 +57,65 @@ def show_points(coords, labels, ax, marker_size=375):
                linewidth=1.25)
 
 
-def save_segmentation(images, pred_masks, gt_masks, name, centers,bboxes):
+def save_segmentation(images, pred_masks,pred_scores, gt_masks, name, centers,bboxes):
     """Function to save segmentation results as JPG files"""
     output_dir = cfg.segmentated_validation_images_dir
-    batch_size = images.size(0)
     colors = ['red', 'green', 'blue', 'yellow', 'purple', 'cyan', 'magenta', 'orange', 'lime', 'pink']
 
-    for idx in range(batch_size):
-        if(cfg.prompt_type == "grid_prompt"):
-            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        else:
-            fig, axes = plt.subplots(1, 4, figsize=(15, 5))
-        axes[0].imshow(images[idx].cpu().permute(1, 2, 0))
-        axes[0].set_title('Original Image')
-        axes[0].axis('off')
 
-        pred_overlay = images[idx].cpu().permute(1, 2, 0).numpy().copy()
+    if(cfg.prompt_type == "grid_prompt"):
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    else:
+        fig, axes = plt.subplots(1, 4, figsize=(15, 5))
+    tensor_img=to_tensor(images)
+    image_array = tensor_img.cpu().permute(1, 2, 0).numpy()
 
+    axes[0].imshow(image_array)
+    axes[0].set_title('Original Image')
+    axes[0].axis('off')
+    pred_overlay = image_array.copy()
+
+    if (cfg.prompt_type != "grid_prompt"):
+        gt_overlay = image_array.copy()
+    for mask_idx in range(pred_masks[0].size(0)):
+        best_mask, score = best_score_mask(pred_masks[0][mask_idx].cpu(), pred_scores[0][mask_idx])
+        prd_mask = best_mask.cpu().numpy()
         if (cfg.prompt_type != "grid_prompt"):
-            gt_overlay = images[idx].cpu().permute(1, 2, 0).numpy().copy()
+            gt_mask = gt_masks[0][mask_idx].cpu().numpy()
+        color = plt.get_cmap('tab10')(mask_idx % len(colors))
 
-        for mask_idx in range(pred_masks[idx].size(0)):
-            pred_mask = pred_masks[idx][mask_idx].cpu().numpy()
-            if (cfg.prompt_type != "grid_prompt"):
-                gt_mask = gt_masks[idx][mask_idx].cpu().numpy()
-            color = plt.get_cmap('tab10')(mask_idx % len(colors))
+        pred_overlay[prd_mask > 0.5] = (1 - 0.5) * pred_overlay[prd_mask > 0.5] + 0.5 * np.array(color[:3])
+        if (cfg.prompt_type != "grid_prompt"):
+            gt_overlay[gt_mask > 0.5] = (1 - 0.5) * gt_overlay[gt_mask > 0.5] + 0.5 * np.array(color[:3])
 
-            pred_overlay[pred_mask > 0.5] = (1 - 0.5) * pred_overlay[pred_mask > 0.5] + 0.5 * np.array(color[:3])
-            if (cfg.prompt_type != "grid_prompt"):
-                gt_overlay[gt_mask > 0.5] = (1 - 0.5) * gt_overlay[gt_mask > 0.5] + 0.5 * np.array(color[:3])
+    axes[1].imshow(pred_overlay)
+    input_label = np.array([1])
 
-        axes[1].imshow(pred_overlay)
-        input_label = np.array([1])
+    if (cfg.prompt_type == "bounding_box"):
+        for i in range(len(bboxes[0])):
+            show_box(bboxes[0][i].cpu(), axes[1])
+    if (cfg.prompt_type == "points"):
+        show_points(centers[0][0].cpu().permute(1, 2, 0), input_label, axes[1])
+    if (cfg.prompt_type == "grid_prompt"):
+        show_points(centers[0][0].cpu().permute(1, 2, 0), input_label, axes[1])
 
-        if (cfg.prompt_type == "bounding_box"):
-            for i in range(len(bboxes[idx])):
-                show_box(bboxes[idx][i].cpu(), axes[1])
-        if (cfg.prompt_type == "points"):
-            show_points(centers[idx][0].cpu().permute(1, 2, 0), input_label, axes[1])
-        if (cfg.prompt_type == "grid_prompt"):
-            show_points(centers[idx][0].cpu().permute(1, 2, 0), input_label, axes[1])
+    axes[1].set_title('Predicted Mask with the prompt')
+    axes[1].axis('off')
 
-        axes[1].set_title('Predicted Mask with the prompt')
-        axes[1].axis('off')
+    axes[2].imshow(pred_overlay)
 
-        axes[2].imshow(pred_overlay)
+    axes[2].set_title('Predicted Mask Overlay')
+    axes[2].axis('off')
 
-
-        axes[2].set_title('Predicted Mask Overlay')
-        axes[2].axis('off')
-
-        if(cfg.prompt_type != "grid_prompt"):
-            axes[3].imshow(gt_overlay)
-            axes[3].set_title('Ground Truth Mask Overlay')
-            axes[3].axis('off')
-
-        # Save the figure
-        os.makedirs(output_dir, exist_ok=True)
-        filename = os.path.join(output_dir, f'{name[idx]}.jpg')
-        plt.savefig(filename)
-        plt.close(fig)
+    if (cfg.prompt_type != "grid_prompt"):
+        axes[3].imshow(gt_overlay)
+        axes[3].set_title('Ground Truth Mask Overlay')
+        axes[3].axis('off')
+    # Save the figure
+    os.makedirs(output_dir, exist_ok=True)
+    filename = os.path.join(output_dir, f'{name[0]}.jpg')
+    plt.savefig(filename)
+    plt.close(fig)
 
 def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: int = 0):
     model.eval()
@@ -109,41 +125,49 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
     with torch.no_grad():
         for iter, data in enumerate(val_dataloader):
             images, bboxes, gt_masks, name, centers = data
-            num_images = images.size(0)
 
             if (cfg.prompt_type == "bounding_box"):
-                pred_masks, _ = model(images, name, bboxes=bboxes)
-                for idx, (pred_mask, gt_mask) in enumerate(zip(pred_masks, gt_masks)):
+                pred_masks, pred_scores = model(images, name, bboxes=bboxes)
+                for idx, (pred_mask,pred_score, gt_mask) in enumerate(zip(pred_masks[0],pred_scores[0], gt_masks[0])):
+                    prd_mask,score=best_score_mask(pred_mask,pred_score)
+                    prd_mask=prd_mask.cpu()
+                    gt_mask_cpu=gt_mask.cpu()
+
                     batch_stats = smp.metrics.get_stats(
-                        pred_mask,
-                        gt_mask.int(),
+                        prd_mask,
+                        gt_mask_cpu.int(),
                         mode='binary',
                         threshold=0.5,
                     )
                     batch_iou = smp.metrics.iou_score(*batch_stats, reduction="micro-imagewise")
                     batch_f1 = smp.metrics.f1_score(*batch_stats, reduction="micro-imagewise")
-                    ious.update(batch_iou, num_images)
-                    f1_scores.update(batch_f1, num_images)
+                    ious.update(batch_iou, 1)
+                    f1_scores.update(batch_f1, 1)
 
             if(cfg.prompt_type=="points"):
-                pred_masks, _ = model(images,name,centers=centers)
-                for idx, (pred_mask, gt_mask) in enumerate(zip(pred_masks, gt_masks)):
+                pred_masks, pred_scores = model(images,name,centers=centers)
+
+                for idx, (pred_mask,pred_score, gt_mask) in enumerate(zip(pred_masks[0],pred_scores[0], gt_masks[0])):
+                    prd_mask,score=best_score_mask(pred_mask,pred_score)
+                    prd_mask=prd_mask.cpu()
+                    gt_mask_cpu=gt_mask.cpu()
+
                     batch_stats = smp.metrics.get_stats(
-                        pred_mask,
-                        gt_mask.int(),
+                        prd_mask,
+                        gt_mask_cpu.int(),
                         mode='binary',
                         threshold=0.5,
                     )
                     batch_iou = smp.metrics.iou_score(*batch_stats, reduction="micro-imagewise")
                     batch_f1 = smp.metrics.f1_score(*batch_stats, reduction="micro-imagewise")
-                    ious.update(batch_iou, num_images)
-                    f1_scores.update(batch_f1, num_images)
+                    ious.update(batch_iou, 1)
+                    f1_scores.update(batch_f1, 1)
 
             if (cfg.prompt_type == "grid_prompt"):
                 pred_masks, _ = model(images, name, centers=centers)
 
             # Save the segmentation for the images
-            save_segmentation(images, pred_masks, gt_masks,name,centers,bboxes)
+            save_segmentation(images, pred_masks,pred_scores, gt_masks,name,centers,bboxes)
 
             fabric.print(
                 f'Val: [{epoch}] - [{iter}/{len(val_dataloader)}]: Mean IoU: [{ious.avg:.4f}] -- Mean F1: [{f1_scores.avg:.4f}]'
@@ -189,21 +213,25 @@ def train_sam(
 
             data_time.update(time.time() - end)
             images, bboxes, gt_masks,name, centers = data
-            batch_size = images.size(0)
+
+            batch_size = 1
 
             if (cfg.prompt_type == "bounding_box"):
                 pred_masks, iou_predictions = model(images, name, bboxes=bboxes)
             if (cfg.prompt_type == "points"):
                 pred_masks, iou_predictions = model(images, name, centers=centers)
-            num_masks = sum(len(pred_mask) for pred_mask in pred_masks)
+            num_masks = len(pred_masks[0])
+
             loss_focal = torch.tensor(0., device=fabric.device)
             loss_dice = torch.tensor(0., device=fabric.device)
             loss_iou = torch.tensor(0., device=fabric.device)
-            for pred_mask, gt_mask, iou_prediction in zip(pred_masks, gt_masks, iou_predictions):
+            for prd_mask, gt_mask, pred_score in zip(pred_masks[0], gt_masks[0], iou_predictions[0]):
+                pred_mask, score = best_score_mask(prd_mask, pred_score)
                 batch_iou = calc_iou(pred_mask, gt_mask)
+
                 loss_focal += focal_loss(pred_mask, gt_mask)
                 loss_dice += dice_loss(pred_mask, gt_mask)
-                loss_iou += F.mse_loss(iou_prediction, batch_iou, reduction='sum') / num_masks
+                loss_iou += F.mse_loss(score, batch_iou, reduction='sum') / num_masks
 
             loss_total = 20. * loss_focal + loss_dice + loss_iou
             optimizer.zero_grad()
@@ -265,7 +293,7 @@ def main(cfg: Box) -> None:
         model = Model(cfg)
         model.setup()
 
-    train_data, val_data = load_datasets(cfg, model.model.image_encoder.img_size)
+    train_data, val_data = load_datasets(cfg, 1024)
     train_data = fabric._setup_dataloader(train_data)
     val_data = fabric._setup_dataloader(val_data)
 
