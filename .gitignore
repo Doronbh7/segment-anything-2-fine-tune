@@ -11,7 +11,7 @@ out/
 
 # Distribution / packaging
 
-
+.idea/
 build/
 content/
 develop-eggs/

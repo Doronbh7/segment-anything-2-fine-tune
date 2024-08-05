@@ -10,7 +10,7 @@ Welcome to the Segment-Anything-2-Finetune project! This repository is designed 
 
 - **Training Options**: Train the model using either bounding boxes or points. Points are generated to represent the center of each bounding box.
 - **Mask Utilization**: Multiple masks are utilized for each point or bounding box, with the highest-scoring mask being used for training (multimask_output=True).
-- **Efficient Training**: Save and load image embeddings to reduce training time.
+- **Efficient Training**: Save and load image embeddings to reduce training time. (in progress....)
 - **Validation Output**: Save segmented validation images to a specified directory.
 
 
