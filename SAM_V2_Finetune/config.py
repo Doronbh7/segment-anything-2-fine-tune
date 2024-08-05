@@ -7,7 +7,7 @@ config = {
     "eval_interval": 5,
     "out_dir": "out/training",
     "segmentated_validation_images_dir":"<segmentated_validation_images_dir path>",
-    "prompt_type":"points",#points/bounding_box/grid_prompt
+    "prompt_type":"points", #points/bounding_box/grid_prompt
 
     "opt": {
         "learning_rate": 5e-4,
