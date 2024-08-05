@@ -22,6 +22,8 @@ class Model(nn.Module):
     def setup(self):
         self.model = build_sam2(self.cfg.model.type, self.cfg.model.checkpoint)
         self.predictor=SAM2ImagePredictor(self.model)
+        self.predictor.model.load_state_dict(torch.load(self.cfg.model.fine_tuned_checkpoint))
+
         #if self.cfg.model.freeze.image_encoder:
          #   self.get_predictor().sam_image_encoder.train(True)
 
