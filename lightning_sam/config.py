@@ -2,14 +2,12 @@ from box import Box
 
 config = {
     "num_devices": 1,
-    "batch_size": 1,
     "num_workers": 2,
     "num_epochs": 5,
     "eval_interval": 5,
     "out_dir": "out/training",
-    "image_embeddings_dir":"/home/user_218/SAM_Project/SAM-ARMBench/lightning_sam/mobile_sam_embedding",
-    "segmentated_validation_images_dir":"/home/user_218/SAM_Project/SAM-ARMBench/lightning_sam/segmentation_results",
-    "prompt_type":"points",#points/bounding_box/grid_prompt (only show image output for grid prompt with validation set,use with eval interval 1 and epoch 1)
+    "segmentated_validation_images_dir":"<segmentated_validation_images_dir path>",
+    "prompt_type":"points",#points/bounding_box/grid_prompt
 
     "opt": {
         "learning_rate": 5e-4,
@@ -19,23 +17,23 @@ config = {
         "warmup_steps": 250,
     },
     "model": {
-        "type": 'sam2_hiera_l.yaml', #mobile_sam - vit_t / regular vit_h
-        "base_model_checkpoint": "/home/user_218/SAM_Project/SAM-ARMBench/segment_anything_2/checkpoints/sam2_hiera_large.pt", #"/home/user_218/SAM_Project/SAM-ARMBench/MobileSam/weights/mobile_sam.pt",
-        "fine_tuned_checkpoint": "/home/user_218/SAM_Project/SAM-ARMBench/lightning_sam/out/training/epoch-000000-f10.97-ckpt.pth",
+        "type": 'sam2_hiera_l.yaml', #sam2 model type (sam2_hiera_l.yaml,sam2_hiera_t.yaml,sam2_hiera_t.yaml,sam2_hiera_b+.yaml)
+        "base_model_checkpoint": "<base model checkpoint path>",
+        "Train_from_fine_tuned_model": False,
+        "fine_tuned_checkpoint": "<fine tuned model check point path (Add path if you want to continue the training from the fine tuned model) >",
         "freeze": {
-            "image_encoder": True,
             "prompt_encoder": True,
             "mask_decoder": False,
         },
     },
     "dataset": {
         "train": {
-            "root_dir": "/home/user_218/SAM_Project/SAM-ARMBench/content/armbench-segmentation-0.1/zoomed-out-tote-transfer-set/images",
-            "annotation_file": "/home/user_218/SAM_Project/SAM-ARMBench/content/armbench-segmentation-0.1/zoomed-out-tote-transfer-set/train.json"
+            "root_dir": "<images path>",
+            "annotation_file": "annotation file path (.json)"
         },
         "val": {
-                "root_dir": "/home/user_218/SAM_Project/SAM-ARMBench/content/armbench-segmentation-0.1/zoomed-out-tote-transfer-set/images",
-            "annotation_file": "/home/user_218/SAM_Project/SAM-ARMBench/content/armbench-segmentation-0.1/zoomed-out-tote-transfer-set/val.json"
+            "root_dir": "<images path>",
+            "annotation_file": "annotation file path (.json)"
         }
     }
 }

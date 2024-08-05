@@ -1,19 +1,10 @@
-import os
 
-import cv2
-import torch
-from box import Box
-from dataset import COCODataset
-from model import Model
-from torchvision.utils import draw_bounding_boxes
-from torchvision.utils import draw_segmentation_masks
-from tqdm import tqdm
 import numpy as np
-
-import os
 from matplotlib import pyplot as plt
 import torch
-import cv2
+from copy import deepcopy
+from typing import Tuple
+
 
 
 
@@ -44,36 +35,27 @@ def calc_iou(pred_mask: torch.Tensor, gt_mask: torch.Tensor):
 
     return batch_iou
 
+#return the mask with the best score .Return mask,score
+def best_score_mask(masks,scores):
+    num_columns = masks.shape[0]
+    for col_idx in range(num_columns):
+        mask=masks[col_idx,:,:]
+        score=scores[col_idx]
 
-def show_anns(anns, axes=None):
-    if len(anns) == 0:
-        return
-    if axes:
-        ax = axes
-    else:
-        ax = plt.gca()
-        ax.set_autoscale_on(False)
-    sorted_anns = sorted(anns, key=(lambda x: x['area']), reverse=True)
-    polygons = []
-    color = []
-    for ann in sorted_anns:
-        m = ann['segmentation']
-        img = np.ones((m.shape[0], m.shape[1], 3))
-        color_mask = np.random.random((1, 3)).tolist()[0]
-        for i in range(3):
-            img[:, :, i] = color_mask[i]
-        ax.imshow(np.dstack((img, m * 0.5)))
+        if col_idx==0:
+            best_score = score
+            best_mask = mask
+        else:
+            if score > best_score:
+                best_score = score
+                best_mask = mask
+    return best_mask,best_score
 
 
-def show_mask(mask, ax, random_color=False):
-    if random_color:
-        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
-    else:
-        color = np.array([30 / 255, 144 / 255, 255 / 255, 0.6])
-    h, w = mask.shape[-2:]
-    mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    ax.imshow(mask_image)
-
+def show_box(box, ax):
+    x0, y0 = box[0], box[1]
+    w, h = box[2] - box[0], box[3] - box[1]
+    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0, 0, 0, 0), lw=2))
 
 def show_points(coords, labels, ax, marker_size=375):
     pos_points = coords[labels == 1]
@@ -84,58 +66,31 @@ def show_points(coords, labels, ax, marker_size=375):
                linewidth=1.25)
 
 
-def show_box(box, ax):
-    x0, y0 = box[0], box[1]
-    w, h = box[2] - box[0], box[3] - box[1]
-    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0, 0, 0, 0), lw=2))
-
-
-def draw_image(image, masks, boxes, labels, alpha=0.4):
-    """plt.imshow(image)
-    show_mask(masks[0], plt.gca())
-    show_box(boxes, plt.gca())
-    plt.show()"""
-    image = torch.from_numpy(image).permute(2, 0, 1)
-    if boxes is not None:
-        image = draw_bounding_boxes(image, boxes, colors=['red'] * len(boxes), labels=labels, width=2)
-    if masks is not None:
-        image = draw_segmentation_masks(image, masks=masks, colors=['red'] * len(masks), alpha=alpha)
-    return image.numpy().transpose(1, 2, 0)
 
 
 
 
+def apply_coords(self, coords: np.ndarray, original_size: Tuple[int, ...]) -> np.ndarray:
+        """
+        Expects a numpy array of length 2 in the final dimension. Requires the
+        original image size in (H, W) format.
+        """
+        old_h, old_w = original_size
 
-def visualize(cfg: Box):
-    model = Model(cfg)
-    model.setup()
-    model.eval()
-    model.cuda()
-    dataset = COCODataset(root_dir=cfg.dataset.val.root_dir,
-                          annotation_file=cfg.dataset.val.annotation_file,
-                          transform=None)
-    #predictor = model.get_predictor()
-    os.makedirs(cfg.out_dir, exist_ok=True)
+        scale = self.target_size * 1.0 / max(original_size[0], original_size[1])
+        newh, neww = original_size[0] * scale, original_size[1] * scale
+        new_w = int(neww + 0.5)
+        new_h = int(newh + 0.5)
 
-    images, bboxes, gt_masks,name, centers=dataset
-    pred_masks, iou_predictions = model(images, name, centers=centers)
+        coords = deepcopy(coords).astype(float)
+        coords[..., 0] = coords[..., 0] * (new_w / old_w)
+        coords[..., 1] = coords[..., 1] * (new_h / old_h)
+        return coords
 
-    plt.figure(figsize=(20, 20))
-    plt.imshow(image)
-    show_anns(masks)
-    plt.axis('off')
-    plt.show()
-
-
-
-
-
-
-
-
-
-
-if __name__ == "__main__":
-    from config import cfg
-
-    visualize(cfg)
+def apply_boxes(self, boxes: np.ndarray, original_size: Tuple[int, ...]) -> np.ndarray:
+        """
+        Expects a numpy array shape Bx4. Requires the original image size
+        in (H, W) format.
+        """
+        boxes = apply_coords(self,boxes.reshape(-1, 2, 2), original_size)
+        return boxes.reshape(-1, 4)

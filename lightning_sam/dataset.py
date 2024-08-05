@@ -9,13 +9,9 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 from pycocotools.coco import COCO
-from segment_anything.utils.transforms import ResizeLongestSide
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
-from amg import build_all_layer_point_grids
-from config import cfg
-
-
+from utils import apply_boxes, apply_coords
 class COCODataset(Dataset):
 
     def __init__(self, root_dir, annotation_file, transform=None):
@@ -56,9 +52,7 @@ class COCODataset(Dataset):
 
         bboxes = np.stack(bboxes, axis=0)
         masks = np.stack(masks, axis=0)
-        if(cfg.prompt_type=="grid_prompt"):
-            temp = build_all_layer_point_grids(16, 0, 1)[0] * 1024
-            centers = [[[x, y]] for x, y in temp]
+
 
         centers = np.stack(centers, axis=0)
         labels = np.ones((len(centers), 1))
@@ -79,7 +73,6 @@ class ResizeAndPad:
 
     def __init__(self, target_size):
         self.target_size = target_size
-        self.transform = ResizeLongestSide(target_size)
         self.to_tensor = transforms.ToTensor()
 
     def __call__(self, image, masks, bboxes,name, coords):
@@ -120,10 +113,10 @@ class ResizeAndPad:
         masks = [transforms.Pad(padding)(mask) for mask in new_masks]
 
         # Adjust bounding boxes
-        bboxes = self.transform.apply_boxes(bboxes, (og_h, og_w))
+        bboxes = apply_boxes(self,bboxes, (og_h, og_w))
         bboxes = [[bbox[0] + pad_w, bbox[1] + pad_h, bbox[2] + pad_w, bbox[3] + pad_h] for bbox in bboxes]
 
-        coords = self.transform.apply_coords(coords, (og_h, og_w))
+        coords = apply_coords(self,coords, (og_h, og_w))
         coords[..., 0] += pad_w
         coords[..., 1] += pad_h
 
@@ -139,12 +132,12 @@ def load_datasets(cfg, img_size):
                       annotation_file=cfg.dataset.val.annotation_file,
                       transform=transform)
     train_dataloader = DataLoader(train,
-                                  batch_size=cfg.batch_size,
+                                  batch_size=1,
                                   shuffle=True,
                                   num_workers=cfg.num_workers,
                                   collate_fn=collate_fn)
     val_dataloader = DataLoader(val,
-                                batch_size=cfg.batch_size,
+                                batch_size=1,
                                 shuffle=True,
                                 num_workers=cfg.num_workers,
                                 collate_fn=collate_fn)

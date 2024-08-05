@@ -1,17 +1,10 @@
 import torch.nn as nn
 import torch
-import torch.nn.functional as F
-from PIL import Image
-import matplotlib.pyplot as plt
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
-from torchvision import transforms
-import pickle
 import os
 
-import h5py
 
-import numpy as np
 class Model(nn.Module):
 
     def __init__(self, cfg):
@@ -22,10 +15,8 @@ class Model(nn.Module):
     def setup(self):
         self.model = build_sam2(self.cfg.model.type, self.cfg.model.base_model_checkpoint)
         self.predictor=SAM2ImagePredictor(self.model)
-        self.predictor.model.load_state_dict(torch.load(self.cfg.model.fine_tuned_checkpoint))
-
-        #if self.cfg.model.freeze.image_encoder:
-         #   self.get_predictor().sam_image_encoder.train(True)
+        if(self.cfg.Train_from_fine_tuned_model==True):
+            self.predictor.model.load_state_dict(torch.load(self.cfg.model.fine_tuned_checkpoint))
 
         if self.cfg.model.freeze.prompt_encoder:
             self.predictor.model.sam_prompt_encoder.train(True)
@@ -46,14 +37,12 @@ class Model(nn.Module):
         predictor.set_image(images)
 
 
-        #image_embeddings = self.model.image_encoder(images)
         pred_masks = []
         ious = []
         if not centers:
             centers = [None] * len(bboxes)
         if not bboxes:
             bboxes = [None] * len(centers)
-        H, W = images.size
         for  bbox, center in zip( bboxes, centers):
             if(self.cfg.prompt_type=="points"):
                 mask_input, unnorm_coords, labels, unnorm_box = predictor._prep_prompts(center[0], center[1], box=None,
@@ -75,16 +64,7 @@ class Model(nn.Module):
             low_res_masks, prd_scores, _, _ = predictor.model.sam_mask_decoder(image_embeddings=predictor._features["image_embed"][-1].unsqueeze(0),image_pe=predictor.model.sam_prompt_encoder.get_dense_pe(),sparse_prompt_embeddings=sparse_embeddings,dense_prompt_embeddings=dense_embeddings,multimask_output=True,repeat_image=batched_mode,high_res_features=high_res_features,)
             prd_masks = predictor._transforms.postprocess_masks(low_res_masks, predictor._orig_hw[-1])# Upscale the masks to the original image resolution
 
-            # Convert the tensor to a NumPy array
 
-            # Display the first mask
-
-            """masks = F.interpolate(
-                low_res_masks,
-                (W, H),
-                mode="bilinear",
-                align_corners=False,
-            )"""
             pred_masks.append(prd_masks.squeeze(1))
             ious.append(prd_scores)
 

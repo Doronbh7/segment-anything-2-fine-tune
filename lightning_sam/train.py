@@ -1,6 +1,4 @@
-import os
 import time
-import matplotlib.pyplot as plt
 from torchvision.transforms.functional import resize, to_tensor,to_pil_image  # type: ignore
 
 import lightning as L
@@ -16,8 +14,8 @@ from losses import DiceLoss
 from losses import FocalLoss
 from model import Model
 from torch.utils.data import DataLoader
-from utils import AverageMeter
-from utils import calc_iou
+from utils import AverageMeter, calc_iou, best_score_mask,show_box,show_points
+
 
 
 torch.set_float32_matmul_precision('high')
@@ -26,47 +24,12 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-#return the mask with the best score .return (mask,score)
-def best_score_mask(masks,scores):
-    num_columns = masks.shape[0]
-    for col_idx in range(num_columns):
-        mask=masks[col_idx,:,:]
-        score=scores[col_idx]
-
-        if col_idx==0:
-            best_score = score
-            best_mask = mask
-        else:
-            if score > best_score:
-                best_score = score
-                best_mask = mask
-    return best_mask,best_score
-
-
-def show_box(box, ax):
-    x0, y0 = box[0], box[1]
-    w, h = box[2] - box[0], box[3] - box[1]
-    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0, 0, 0, 0), lw=2))
-
-def show_points(coords, labels, ax, marker_size=375):
-    pos_points = coords[labels == 1]
-    neg_points = coords[labels == 0]
-    ax.scatter(pos_points[:, 0], pos_points[:, 1], color='green', marker='*', s=marker_size, edgecolor='white',
-               linewidth=1.25)
-    ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='*', s=marker_size, edgecolor='white',
-               linewidth=1.25)
-
-
 def save_segmentation(images, pred_masks,pred_scores, gt_masks, name, centers,bboxes):
     """Function to save segmentation results as JPG files"""
     output_dir = cfg.segmentated_validation_images_dir
     colors = ['red', 'green', 'blue', 'yellow', 'purple', 'cyan', 'magenta', 'orange', 'lime', 'pink']
 
-
-    if(cfg.prompt_type == "grid_prompt"):
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    else:
-        fig, axes = plt.subplots(1, 4, figsize=(15, 5))
+    fig, axes = plt.subplots(1, 4, figsize=(15, 5))
     tensor_img=to_tensor(images)
     image_array = tensor_img.cpu().permute(1, 2, 0).numpy()
 
@@ -75,18 +38,15 @@ def save_segmentation(images, pred_masks,pred_scores, gt_masks, name, centers,bb
     axes[0].axis('off')
     pred_overlay = image_array.copy()
 
-    if (cfg.prompt_type != "grid_prompt"):
-        gt_overlay = image_array.copy()
+    gt_overlay = image_array.copy()
     for mask_idx in range(pred_masks[0].size(0)):
         best_mask, score = best_score_mask(pred_masks[0][mask_idx].cpu(), pred_scores[0][mask_idx])
         prd_mask = best_mask.cpu().numpy()
-        if (cfg.prompt_type != "grid_prompt"):
-            gt_mask = gt_masks[0][mask_idx].cpu().numpy()
+        gt_mask = gt_masks[0][mask_idx].cpu().numpy()
         color = plt.get_cmap('tab10')(mask_idx % len(colors))
 
         pred_overlay[prd_mask > 0.5] = (1 - 0.5) * pred_overlay[prd_mask > 0.5] + 0.5 * np.array(color[:3])
-        if (cfg.prompt_type != "grid_prompt"):
-            gt_overlay[gt_mask > 0.5] = (1 - 0.5) * gt_overlay[gt_mask > 0.5] + 0.5 * np.array(color[:3])
+        gt_overlay[gt_mask > 0.5] = (1 - 0.5) * gt_overlay[gt_mask > 0.5] + 0.5 * np.array(color[:3])
 
     axes[1].imshow(pred_overlay)
     input_label = np.array([1])
@@ -95,8 +55,6 @@ def save_segmentation(images, pred_masks,pred_scores, gt_masks, name, centers,bb
         for i in range(len(bboxes[0])):
             show_box(bboxes[0][i].cpu(), axes[1])
     if (cfg.prompt_type == "points"):
-        show_points(centers[0][0].cpu().permute(1, 2, 0), input_label, axes[1])
-    if (cfg.prompt_type == "grid_prompt"):
         show_points(centers[0][0].cpu().permute(1, 2, 0), input_label, axes[1])
 
     axes[1].set_title('Predicted Mask with the prompt')
@@ -107,10 +65,9 @@ def save_segmentation(images, pred_masks,pred_scores, gt_masks, name, centers,bb
     axes[2].set_title('Predicted Mask Overlay')
     axes[2].axis('off')
 
-    if (cfg.prompt_type != "grid_prompt"):
-        axes[3].imshow(gt_overlay)
-        axes[3].set_title('Ground Truth Mask Overlay')
-        axes[3].axis('off')
+    axes[3].imshow(gt_overlay)
+    axes[3].set_title('Ground Truth Mask Overlay')
+    axes[3].axis('off')
     # Save the figure
     os.makedirs(output_dir, exist_ok=True)
     filename = os.path.join(output_dir, f'{name[0]}.jpg')
@@ -163,8 +120,8 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
                     ious.update(batch_iou, 1)
                     f1_scores.update(batch_f1, 1)
 
-            if (cfg.prompt_type == "grid_prompt"):
-                pred_masks, _ = model(images, name, centers=centers)
+
+
 
             # Save the segmentation for the images
             save_segmentation(images, pred_masks,pred_scores, gt_masks,name,centers,bboxes)
