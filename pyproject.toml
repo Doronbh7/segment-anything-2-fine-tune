@@ -1,16 +1,17 @@
 [tool.poetry]
-name = "lightning-sam"
-version = "0.1.0"
-description = "Finetune segment-anything"
+name = "SAM_V2_Finetune"
+version = "1.0.1
+description = "Finetune for Meta's Segment Anything 2 "
 readme = "README.md"
 documentation = ""
-repository = "https://github.com/luca-medeiros/lightning-sam"
+repository = "https://github.com/Doronbh7/segment-anything-2-finetune"
 authors = [
-  "Luca Medeiros <lucamedeiros@outlook.com>",
+  "Doronbh7 https://github.com/Doronbh7",
+    "AdiBH99 https://github.com/AdiBH99"
 ]
 license = "LICENSE"
 packages = [
-    { include = "lightning_sam" },
+    { include = "SAM_V2_Finetune" },
 ]
 
 [tool.poetry.dependencies]
@@ -40,23 +41,15 @@ target-version = "py38"
 line-length = 120
 fix = true
 select = [
-    # https://github.com/charliermarsh/ruff#pyflakes-f
     "F", # Pyflakes
-    # https://github.com/charliermarsh/ruff#pycodestyle-e-w
     "E", # pycodestyle
     "W", # Warning
-    # https://github.com/charliermarsh/ruff#flake8-comprehensions-c4
-    # https://github.com/charliermarsh/ruff#mccabe-c90
     "C", # Complexity (mccabe+) & comprehensions
-    # https://github.com/charliermarsh/ruff#pyupgrade-up
     "UP", # pyupgrade
-    # https://github.com/charliermarsh/ruff#isort-i
     "I", # isort
 ]
 ignore = [
-    # https://github.com/charliermarsh/ruff#pycodestyle-e-w
     "E402", # module level import not at top of file
-    # https://github.com/charliermarsh/ruff#pyupgrade-up
     "UP006", # use-pep585-annotation
     "UP007", # use-pep604-annotation
     "E741", # Ambiguous variable name
