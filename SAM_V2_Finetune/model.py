@@ -3,6 +3,9 @@ import torch
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 import os
+import pickle
+import numpy as np
+from PIL.Image import Image
 
 
 class Model(nn.Module):
@@ -15,7 +18,7 @@ class Model(nn.Module):
     def setup(self):
         self.model = build_sam2(self.cfg.model.type, self.cfg.model.base_model_checkpoint)
         self.predictor=SAM2ImagePredictor(self.model)
-        if(self.cfg.Train_from_fine_tuned_model==True):
+        if(self.cfg.model.Train_from_fine_tuned_model==True):
             self.predictor.model.load_state_dict(torch.load(self.cfg.model.fine_tuned_checkpoint))
 
         if self.cfg.model.freeze.prompt_encoder:
@@ -28,14 +31,36 @@ class Model(nn.Module):
         if not bboxes and not centers:
             raise ValueError("Either bboxes or centers must be provided")
 
-
-##image embedding cache store and load(reduce 90% of training time),works the best with 1 batch
-        file_name=os.path.join(self.cfg.image_embeddings_dir,(str(name)+"_image_embeddings_cache.pklz"))
         predictor=self.predictor
 
+##image embedding cache store and load(reduce 35% of training time)
+        if(self.cfg.save_image_embeddings==True):
 
-        predictor.set_image(images)
+            features_file_name=os.path.join(self.cfg.image_features_embeddings_dir,(str(name)+"_image_embeddings_cache.pklz"))
 
+            if os.path.exists(features_file_name):
+                with open(features_file_name, 'rb') as f:
+                    image_features = pickle.load(f)
+
+                    predictor.reset_predictor()
+                    # Transform the image to the form expected by the model
+                    if isinstance(images, np.ndarray):
+                        predictor._orig_hw = [image.shape[:2]]
+                    elif isinstance(images, Image):
+                        w, h = images.size
+                        predictor._orig_hw = [(h, w)]
+                    else:
+                        raise NotImplementedError("Image format not supported")
+                    predictor._features = image_features
+                    predictor._is_image_set = True
+            else:
+
+                predictor.set_image(images)
+                image_features = predictor._features
+                with open(features_file_name, 'wb') as f:
+                    pickle.dump(image_features, f)
+        else:
+            predictor.set_image(images)
 
         pred_masks = []
         ious = []

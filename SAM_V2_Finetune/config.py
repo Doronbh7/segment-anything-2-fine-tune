@@ -3,11 +3,14 @@ from box import Box
 config = {
     "num_devices": 1,
     "num_workers": 2,
-    "num_epochs": 5,
-    "eval_interval": 5,
-    "out_dir": "out/training",
+    "num_epochs": 1,
+    "eval_interval": 1,
+    "out_checkpoint_dir": "out/training",
+    "save_validation_images_result": True,
     "segmentated_validation_images_dir":"<segmentated_validation_images_dir path>",
     "prompt_type":"points", #points/bounding_box
+    "save_image_embeddings":True,
+    "image_features_embeddings_dir":"<image_features_embeddings_dir path>",
 
     "opt": {
         "learning_rate": 5e-4,
@@ -27,6 +30,7 @@ config = {
         },
     },
     "dataset": {
+        "image_size": 2048,
         "train": {
             "root_dir": "<images path>",
             "annotation_file": "annotation file path (.json)"

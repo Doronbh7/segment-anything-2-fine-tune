@@ -1,13 +1,13 @@
 
 # Segment-Anything-2-Finetune Project
 
-Welcome to the Segment-Anything-2-Finetune project! This repository is designed to train and evaluate a segmentation model using Meta's Segment-Anything-2 and COCO data.
+Welcome to the Segment-Anything-2-Finetune project! This repository is designed to train and evaluate a segmentation model using Meta's Segment-Anything-2 and COCO format.
 
 ## Features
-
-- **Training Options**: Train the model using either bounding boxes or points. Points are generated to represent the center of each bounding box.
+- **Dataset Configuration**: COCO format .
+- **Training Options**: Train the model using either bounding boxes or points. Points are generated from the bounding boxes.Each point represent the center of the bounding box .
 - **Mask Utilization**: Multiple masks are utilized for each point or bounding box, with the highest-scoring mask being used for training (multimask_output=True).
-- **Efficient Training**: Save and load image embeddings to reduce training time. (in progress....)
+- **Efficient Training**: Save and load image embeddings to reduce training time. Save ~35% of training time by loading embeddings from a previous epoch/run.
 - **Validation Output**: Save segmented validation images to a specified directory.
 
 
