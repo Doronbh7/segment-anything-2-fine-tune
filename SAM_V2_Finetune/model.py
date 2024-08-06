@@ -21,9 +21,9 @@ class Model(nn.Module):
         if(self.cfg.model.Train_from_fine_tuned_model==True):
             self.predictor.model.load_state_dict(torch.load(self.cfg.model.fine_tuned_checkpoint))
 
-        if self.cfg.model.freeze.prompt_encoder:
+        if self.cfg.model.freeze.prompt_encoder==False:
             self.predictor.model.sam_prompt_encoder.train(True)
-        if self.cfg.model.freeze.mask_decoder:
+        if self.cfg.model.freeze.mask_decoder==False:
             self.predictor.model.sam_mask_decoder.train(True)
 
 
@@ -45,7 +45,7 @@ class Model(nn.Module):
                     predictor.reset_predictor()
                     # Transform the image to the form expected by the model
                     if isinstance(images, np.ndarray):
-                        predictor._orig_hw = [image.shape[:2]]
+                        predictor._orig_hw = [images.shape[:2]]
                     elif isinstance(images, Image):
                         w, h = images.size
                         predictor._orig_hw = [(h, w)]
