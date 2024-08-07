@@ -165,7 +165,7 @@ def train_sam(
         validated = False
 
         for iter, data in enumerate(train_dataloader):
-            if epoch == 1 and epoch % cfg.eval_interval == 0 and not validated:
+            if  epoch % cfg.eval_interval == 0 and not validated:
                 validate(fabric, model, val_dataloader, epoch)
                 validated = True
 
