@@ -30,7 +30,7 @@ config = {
         },
     },
     "dataset": {
-        "image_size": 2048,
+        "image_resize": 1024,
         "train": {
             "root_dir": "<images path>",
             "annotation_file": "annotation file path (.json)"
