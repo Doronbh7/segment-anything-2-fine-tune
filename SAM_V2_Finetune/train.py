@@ -24,6 +24,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 def save_segmentation(images, pred_masks,pred_scores, gt_masks, name, centers,bboxes):
     """Function to save segmentation results as JPG files"""
     output_dir = cfg.segmentated_validation_images_dir
@@ -178,18 +179,20 @@ def train_sam(
                 pred_masks, iou_predictions = model(images, name, bboxes=bboxes)
             if (cfg.prompt_type == "points"):
                 pred_masks, iou_predictions = model(images, name, centers=centers)
-            num_masks = len(pred_masks[0])
+            num_masks = sum(len(prd_mask) for prd_mask in pred_masks[0])
 
             loss_focal = torch.tensor(0., device=fabric.device)
             loss_dice = torch.tensor(0., device=fabric.device)
             loss_iou = torch.tensor(0., device=fabric.device)
             for prd_mask, gt_mask, pred_score in zip(pred_masks[0], gt_masks[0], iou_predictions[0]):
                 pred_mask, score = best_score_mask(prd_mask, pred_score)
+
                 batch_iou = calc_iou(pred_mask, gt_mask)
+                score = torch.sigmoid(score)  # Apply sigmoid activation to IoU logits
 
                 loss_focal += focal_loss(pred_mask, gt_mask)
                 loss_dice += dice_loss(pred_mask, gt_mask)
-                loss_iou += F.mse_loss(score, batch_iou, reduction='sum') / num_masks
+                loss_iou += F.l1_loss(score, batch_iou, reduction='sum') / num_masks
 
             loss_total = 20. * loss_focal + loss_dice + loss_iou
             optimizer.zero_grad()
@@ -251,7 +254,7 @@ def main(cfg: Box) -> None:
         model = Model(cfg)
         model.setup()
 
-    train_data, val_data = load_datasets(cfg, cfg.dataset.image_size)
+    train_data, val_data = load_datasets(cfg, cfg.dataset.image_resize)
     train_data = fabric._setup_dataloader(train_data)
     val_data = fabric._setup_dataloader(val_data)
 
