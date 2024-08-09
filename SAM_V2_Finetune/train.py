@@ -24,7 +24,6 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-
 def save_segmentation(images, pred_masks,pred_scores, gt_masks, name, centers,bboxes):
     """Function to save segmentation results as JPG files"""
     output_dir = cfg.segmentated_validation_images_dir
@@ -122,8 +121,6 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
                     f1_scores.update(batch_f1, 1)
 
 
-
-
             # Save the segmentation for the images
             if(cfg.save_validation_images_result==True):
               save_segmentation(images, pred_masks,pred_scores, gt_masks,name,centers,bboxes)
@@ -185,16 +182,29 @@ def train_sam(
             loss_dice = torch.tensor(0., device=fabric.device)
             loss_iou = torch.tensor(0., device=fabric.device)
             for prd_mask, gt_mask, pred_score in zip(pred_masks[0], gt_masks[0], iou_predictions[0]):
-                pred_mask, score = best_score_mask(prd_mask, pred_score)
+                num_columns = prd_mask.shape[0]
+                temp_focal_loss = torch.tensor(0., device=fabric.device)
+                temp_dice_loss = torch.tensor(0., device=fabric.device)
+                min_seg_loss = torch.tensor(0., device=fabric.device)
 
-                batch_iou = calc_iou(pred_mask, gt_mask)
-                score = torch.sigmoid(score)  # Apply sigmoid activation to IoU logits
+                for col_idx in range(num_columns):
+                    mask = prd_mask[col_idx, :, :]
+                    score = pred_score[col_idx]
+                    batch_iou = calc_iou(mask, gt_mask)
+                    score = torch.sigmoid(score)  # Apply sigmoid activation to IoU logits
 
-                loss_focal += focal_loss(pred_mask, gt_mask)
-                loss_dice += dice_loss(pred_mask, gt_mask)
-                loss_iou += F.l1_loss(score, batch_iou, reduction='sum') / num_masks
+                    loss_iou += F.l1_loss(score, batch_iou, reduction='sum') / num_masks
+                    seg_loss = 20. * focal_loss(mask, gt_mask) + dice_loss(mask, gt_mask)
+                    if col_idx == 0:
+                        min_seg_loss = seg_loss
 
-            loss_total = 20. * loss_focal + loss_dice + loss_iou
+                    if(seg_loss<min_seg_loss):
+                        min_seg_loss = seg_loss
+                        temp_focal_loss = focal_loss(mask, gt_mask)
+                        temp_dice_loss = dice_loss(mask, gt_mask)
+                loss_focal += temp_focal_loss
+                loss_dice += temp_dice_loss
+            loss_total = 20. * loss_focal + loss_dice+ loss_iou
             optimizer.zero_grad()
             fabric.backward(loss_total)
             optimizer.step()
