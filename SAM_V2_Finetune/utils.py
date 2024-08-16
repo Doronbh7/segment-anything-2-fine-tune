@@ -38,6 +38,7 @@ def calc_iou(pred_mask: torch.Tensor, gt_mask: torch.Tensor):
 #return the mask with the best score .Return mask,score
 def best_score_mask(masks,scores):
     num_columns = masks.shape[0]
+    num=0
     for col_idx in range(num_columns):
         mask=masks[col_idx,:,:]
         score=scores[col_idx]
@@ -45,11 +46,14 @@ def best_score_mask(masks,scores):
         if col_idx==0:
             best_score = score
             best_mask = mask
+            num = col_idx
+
         else:
             if score > best_score:
                 best_score = score
                 best_mask = mask
-    return best_mask,best_score
+                num=col_idx
+    return best_mask,best_score,num
 
 
 def show_box(box, ax):

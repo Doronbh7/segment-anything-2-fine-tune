@@ -11,7 +11,8 @@ config = {
     "prompt_type":"points", #points/bounding_box
     "save_image_embeddings":True,
     "image_features_embeddings_dir":"<image_features_embeddings_dir path>",
-
+    "iterative_sampling":True,
+    "correction_clicks":7,#(only for iterative sampling=True)
     "opt": {
         "learning_rate": 5e-4,
         "weight_decay": 1e-4,

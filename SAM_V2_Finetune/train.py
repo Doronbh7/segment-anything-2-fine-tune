@@ -19,10 +19,10 @@ from utils import AverageMeter, calc_iou, best_score_mask,show_box,show_points
 
 
 torch.set_float32_matmul_precision('high')
-
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+
 
 def save_segmentation(images, pred_masks,pred_scores, gt_masks, name, centers,bboxes):
     """Function to save segmentation results as JPG files"""
@@ -40,7 +40,7 @@ def save_segmentation(images, pred_masks,pred_scores, gt_masks, name, centers,bb
 
     gt_overlay = image_array.copy()
     for mask_idx in range(pred_masks[0].size(0)):
-        best_mask, score = best_score_mask(pred_masks[0][mask_idx].cpu(), pred_scores[0][mask_idx])
+        best_mask, score,_ = best_score_mask(pred_masks[0][mask_idx].cpu(), pred_scores[0][mask_idx])
         prd_mask = best_mask.cpu().numpy()
         gt_mask = gt_masks[0][mask_idx].cpu().numpy()
         color = plt.get_cmap('tab10')(mask_idx % len(colors))
@@ -84,9 +84,9 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
             images, bboxes, gt_masks, name, centers = data
 
             if (cfg.prompt_type == "bounding_box"):
-                pred_masks, pred_scores = model(images, name, bboxes=bboxes)
+                pred_masks, pred_scores,_ = model(images, name, bboxes=bboxes)
                 for idx, (pred_mask,pred_score, gt_mask) in enumerate(zip(pred_masks[0],pred_scores[0], gt_masks[0])):
-                    prd_mask,score=best_score_mask(pred_mask,pred_score)
+                    prd_mask,score,_=best_score_mask(pred_mask,pred_score)
                     prd_mask=prd_mask.cpu()
                     gt_mask_cpu=gt_mask.cpu()
 
@@ -102,10 +102,10 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
                     f1_scores.update(batch_f1, 1)
 
             if(cfg.prompt_type=="points"):
-                pred_masks, pred_scores = model(images,name,centers=centers)
+                pred_masks, pred_scores ,_= model(images,name,centers=centers)
 
                 for idx, (pred_mask,pred_score, gt_mask) in enumerate(zip(pred_masks[0],pred_scores[0], gt_masks[0])):
-                    prd_mask,score=best_score_mask(pred_mask,pred_score)
+                    prd_mask,score,_=best_score_mask(pred_mask,pred_score)
                     prd_mask=prd_mask.cpu()
                     gt_mask_cpu=gt_mask.cpu()
 
@@ -120,8 +120,7 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
                     ious.update(batch_iou, 1)
                     f1_scores.update(batch_f1, 1)
 
-
-            # Save the segmentation for the images
+                    # Save the segmentation for the images
             if(cfg.save_validation_images_result==True):
               save_segmentation(images, pred_masks,pred_scores, gt_masks,name,centers,bboxes)
 
@@ -161,8 +160,11 @@ def train_sam(
         total_losses = AverageMeter()
         end = time.time()
         validated = False
+        iter=0
+        for num,data in enumerate(train_dataloader):
+            iter=iter+1
+            torch.cuda.empty_cache()
 
-        for iter, data in enumerate(train_dataloader):
             if  epoch % cfg.eval_interval == 0 and not validated:
                 validate(fabric, model, val_dataloader, epoch)
                 validated = True
@@ -172,40 +174,77 @@ def train_sam(
 
             batch_size = 1
 
-            if (cfg.prompt_type == "bounding_box"):
-                pred_masks, iou_predictions = model(images, name, bboxes=bboxes)
-            if (cfg.prompt_type == "points"):
-                pred_masks, iou_predictions = model(images, name, centers=centers)
-            num_masks = sum(len(prd_mask) for prd_mask in pred_masks[0])
+
+            if(cfg.iterative_sampling==True):
+                iter_sampling_num=cfg.correction_clicks
+            else:
+                iter_sampling_num=1
 
             loss_focal = torch.tensor(0., device=fabric.device)
             loss_dice = torch.tensor(0., device=fabric.device)
             loss_iou = torch.tensor(0., device=fabric.device)
-            for prd_mask, gt_mask, pred_score in zip(pred_masks[0], gt_masks[0], iou_predictions[0]):
-                num_columns = prd_mask.shape[0]
-                temp_focal_loss = torch.tensor(0., device=fabric.device)
-                temp_dice_loss = torch.tensor(0., device=fabric.device)
-                min_seg_loss = torch.tensor(0., device=fabric.device)
 
-                for col_idx in range(num_columns):
-                    mask = prd_mask[col_idx, :, :]
-                    score = pred_score[col_idx]
-                    batch_iou = calc_iou(mask, gt_mask)
-                    score = torch.sigmoid(score)  # Apply sigmoid activation to IoU logits
+            for click_num in range(iter_sampling_num):
+                torch.cuda.empty_cache()
 
-                    loss_iou += F.l1_loss(score, batch_iou, reduction='sum') / num_masks
-                    seg_loss = 20. * focal_loss(mask, gt_mask) + dice_loss(mask, gt_mask)
-                    if col_idx == 0:
-                        min_seg_loss = seg_loss
 
-                    if(seg_loss<min_seg_loss):
-                        min_seg_loss = seg_loss
-                        temp_focal_loss = focal_loss(mask, gt_mask)
-                        temp_dice_loss = dice_loss(mask, gt_mask)
-                loss_focal += temp_focal_loss
-                loss_dice += temp_dice_loss
-            loss_total = 20. * loss_focal + loss_dice+ loss_iou
+                if click_num == 0:
+                    # Initial prediction
+                    if (cfg.prompt_type == "bounding_box"):
+                        pred_masks, iou_predictions,low_res_masks_list = model(images, name, bboxes=bboxes)
+                    if (cfg.prompt_type == "points"):
+                        pred_masks, iou_predictions,low_res_masks_list = model(images, name, centers=centers)
+                else:
+                    # Subsequent corrections based on new prompts
+                    if (cfg.prompt_type == "bounding_box"):
+                        pred_masks, iou_predictions,low_res_masks= model(images, name, bboxes=bboxes,previous_masks=previous_low_res_best_mask[0])
+                    if (cfg.prompt_type == "points"):
+                        pred_masks, iou_predictions,low_res_masks = model(images, name, centers=centers,previous_masks=previous_low_res_best_mask[0])
+
+                previous_low_res_best_mask=[]
+
+                num_masks = sum(len(prd_mask) for prd_mask in pred_masks[0])
+
+
+
+                for prd_mask, gt_mask, pred_score,low_res_mask in zip(pred_masks[0], gt_masks[0], iou_predictions[0],low_res_masks_list[0]):
+                    torch.cuda.empty_cache()
+                    num_columns = prd_mask.shape[0]
+                    temp_focal_loss = torch.tensor(0., device=fabric.device)
+                    temp_dice_loss = torch.tensor(0., device=fabric.device)
+                    min_seg_loss = torch.tensor(0., device=fabric.device)
+
+                    for col_idx in range(num_columns):
+                        mask = prd_mask[col_idx, :, :]
+                        score = pred_score[col_idx]
+                        batch_iou = calc_iou(mask, gt_mask)
+
+                        # find best score mask
+                        if col_idx == 0:
+                            best_score = score
+                            num = col_idx
+
+                        else:
+                            if score > best_score:
+                                best_score = score
+                                num = col_idx
+
+                        loss_iou =loss_iou+ F.l1_loss(score, batch_iou, reduction='sum') / num_masks
+                        seg_loss = 20. * focal_loss(mask, gt_mask) + dice_loss(mask, gt_mask)
+                        if col_idx == 0:
+                            min_seg_loss = seg_loss
+
+                        if(seg_loss<min_seg_loss):
+                            min_seg_loss = seg_loss
+                            temp_focal_loss = focal_loss(mask, gt_mask)
+                            temp_dice_loss = dice_loss(mask, gt_mask)
+                    loss_focal =loss_focal+ temp_focal_loss
+                    loss_dice =loss_dice+ temp_dice_loss
+                    previous_low_res_best_mask.append(low_res_mask[num])
+
+            loss_total = 20. * loss_focal+ loss_dice+loss_iou
             optimizer.zero_grad()
+
             fabric.backward(loss_total)
             optimizer.step()
             scheduler.step()
@@ -217,10 +256,11 @@ def train_sam(
             iou_losses.update(loss_iou.item(), batch_size)
             total_losses.update(loss_total.item(), batch_size)
 
-            fabric.print(f'Epoch: [{epoch}][{iter+1}/{len(train_dataloader)}]'
+            fabric.print(f'Epoch: [{epoch}][{iter}/{len(train_dataloader)}]:'
                          f' | Time [{batch_time.val:.3f}s ({batch_time.avg:.3f}s)]'
                          f' | Data [{data_time.val:.3f}s ({data_time.avg:.3f}s)]'
-                         f' | a Focal Loss [{20. * focal_losses.val:.4f} ({20. * focal_losses.avg:.4f})]'                         f' | Dice Loss [{dice_losses.val:.4f} ({dice_losses.avg:.4f})]'
+                         f' | a Focal Loss [{20. * focal_losses.val:.4f} ({20. * focal_losses.avg:.4f})]'                         
+                         f' | Dice Loss [{dice_losses.val:.4f} ({dice_losses.avg:.4f})]'
                          f' | IoU Loss [{iou_losses.val:.4f} ({iou_losses.avg:.4f})]'
                          f' | Total Loss [{total_losses.val:.4f} ({total_losses.avg:.4f})]')
             steps = epoch * len(train_dataloader) + iter
@@ -230,6 +270,7 @@ def train_sam(
                 'dice loss': dice_losses.val,
             }
             fabric.log_dict(log_info, step=steps)
+
 
 def configure_opt(cfg: Box, model: Model):
 

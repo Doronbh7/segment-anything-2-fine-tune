@@ -14,6 +14,7 @@ learning of when a mask might be bad, but only supervise the mask logits with th
 loss (linear combination of focal and dice loss)."
 - **Efficient Training**: Save and load image embeddings to reduce training time. Save ~35% of training time by loading embeddings from a previous epoch/run.
 - **Validation Output**: Save segmented validation images to a specified directory.
+- **Iterative Sampling**: Repeatedly process the same image to enhance the model's performance. In each iteration after the first, the model uses the masks generated from the previous iteration as prompts, in conjunction with the original prompt. This approach aims to reduce false negatives.
 
 
 ## How to Use
