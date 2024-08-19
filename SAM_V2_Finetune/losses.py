@@ -40,5 +40,6 @@ class DiceLoss(nn.Module):
 
         intersection = (inputs * targets).sum()
         dice = (2. * intersection + smooth) / (inputs.sum() + targets.sum() + smooth)
+        dice = dice.mean()
 
         return 1 - dice

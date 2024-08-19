@@ -162,8 +162,6 @@ def train_sam(
         validated = False
         iter=0
         for num,data in enumerate(train_dataloader):
-            iter=iter+1
-            torch.cuda.empty_cache()
 
             if  epoch % cfg.eval_interval == 0 and not validated:
                 validate(fabric, model, val_dataloader, epoch)
@@ -177,38 +175,40 @@ def train_sam(
 
             if(cfg.iterative_sampling==True):
                 iter_sampling_num=cfg.correction_clicks
+
             else:
                 iter_sampling_num=1
 
-            loss_focal = torch.tensor(0., device=fabric.device)
-            loss_dice = torch.tensor(0., device=fabric.device)
-            loss_iou = torch.tensor(0., device=fabric.device)
+            iter_total = len(train_dataloader)*iter_sampling_num
 
             for click_num in range(iter_sampling_num):
-                torch.cuda.empty_cache()
+                iter = iter + 1
+
+                loss_focal = torch.tensor(0., device=fabric.device)
+                loss_dice = torch.tensor(0., device=fabric.device)
+                loss_iou = torch.tensor(0., device=fabric.device)
 
 
                 if click_num == 0:
                     # Initial prediction
                     if (cfg.prompt_type == "bounding_box"):
-                        pred_masks, iou_predictions,low_res_masks_list = model(images, name, bboxes=bboxes)
+                        pred_masks, iou_predictions = model(images, name, bboxes=bboxes)
                     if (cfg.prompt_type == "points"):
-                        pred_masks, iou_predictions,low_res_masks_list = model(images, name, centers=centers)
+                        pred_masks, iou_predictions = model(images, name, centers=centers)
                 else:
                     # Subsequent corrections based on new prompts
                     if (cfg.prompt_type == "bounding_box"):
-                        pred_masks, iou_predictions,low_res_masks= model(images, name, bboxes=bboxes,previous_masks=previous_low_res_best_mask[0])
+                        pred_masks, iou_predictions= model(images, name, bboxes=bboxes,previous_masks=previous_best_mask[0])
                     if (cfg.prompt_type == "points"):
-                        pred_masks, iou_predictions,low_res_masks = model(images, name, centers=centers,previous_masks=previous_low_res_best_mask[0])
+                        pred_masks, iou_predictions = model(images, name, centers=centers,previous_masks=previous_best_mask[0])
 
-                previous_low_res_best_mask=[]
+                previous_best_mask=[]
 
                 num_masks = sum(len(prd_mask) for prd_mask in pred_masks[0])
 
 
 
-                for prd_mask, gt_mask, pred_score,low_res_mask in zip(pred_masks[0], gt_masks[0], iou_predictions[0],low_res_masks_list[0]):
-                    torch.cuda.empty_cache()
+                for prd_mask, gt_mask, pred_score in zip(pred_masks[0], gt_masks[0], iou_predictions[0]):
                     num_columns = prd_mask.shape[0]
                     temp_focal_loss = torch.tensor(0., device=fabric.device)
                     temp_dice_loss = torch.tensor(0., device=fabric.device)
@@ -240,36 +240,42 @@ def train_sam(
                             temp_dice_loss = dice_loss(mask, gt_mask)
                     loss_focal =loss_focal+ temp_focal_loss
                     loss_dice =loss_dice+ temp_dice_loss
-                    previous_low_res_best_mask.append(low_res_mask[num])
+                    previous_best_mask.append(prd_mask[num].detach())
 
-            loss_total = 20. * loss_focal+ loss_dice+loss_iou
-            optimizer.zero_grad()
+                loss_total = 20. * loss_focal+ loss_dice+loss_iou
+                optimizer.zero_grad()
 
-            fabric.backward(loss_total)
-            optimizer.step()
-            scheduler.step()
-            batch_time.update(time.time() - end)
-            end = time.time()
+                fabric.backward(loss_total)
+                optimizer.step()
+                scheduler.step()
+                batch_time.update(time.time() - end)
+                end = time.time()
 
-            focal_losses.update(loss_focal.item(), batch_size)
-            dice_losses.update(loss_dice.item(), batch_size)
-            iou_losses.update(loss_iou.item(), batch_size)
-            total_losses.update(loss_total.item(), batch_size)
+                focal_losses.update(loss_focal.item(), batch_size)
+                dice_losses.update(loss_dice.item(), batch_size)
+                iou_losses.update(loss_iou.item(), batch_size)
+                total_losses.update(loss_total.item(), batch_size)
 
-            fabric.print(f'Epoch: [{epoch}][{iter}/{len(train_dataloader)}]:'
-                         f' | Time [{batch_time.val:.3f}s ({batch_time.avg:.3f}s)]'
-                         f' | Data [{data_time.val:.3f}s ({data_time.avg:.3f}s)]'
-                         f' | a Focal Loss [{20. * focal_losses.val:.4f} ({20. * focal_losses.avg:.4f})]'                         
-                         f' | Dice Loss [{dice_losses.val:.4f} ({dice_losses.avg:.4f})]'
-                         f' | IoU Loss [{iou_losses.val:.4f} ({iou_losses.avg:.4f})]'
-                         f' | Total Loss [{total_losses.val:.4f} ({total_losses.avg:.4f})]')
-            steps = epoch * len(train_dataloader) + iter
-            log_info = {
-                'Loss': total_losses.val,
-                'alpha focal loss': 20. * focal_losses.val,
-                'dice loss': dice_losses.val,
-            }
-            fabric.log_dict(log_info, step=steps)
+                fabric.print(f'Epoch: [{epoch}][{iter}/{iter_total}]:'
+                             f' | Time [{batch_time.val:.3f}s ({batch_time.avg:.3f}s)]'
+                             f' | Data [{data_time.val:.3f}s ({data_time.avg:.3f}s)]'
+                             f' | a Focal Loss [{20. * focal_losses.val:.4f} ({20. * focal_losses.avg:.4f})]'                         
+                             f' | Dice Loss [{dice_losses.val:.4f} ({dice_losses.avg:.4f})]'
+                             f' | IoU Loss [{iou_losses.val:.4f} ({iou_losses.avg:.4f})]'
+                             f' | Total Loss [{total_losses.val:.4f} ({total_losses.avg:.4f})]')
+                steps = epoch * len(train_dataloader) + iter
+                log_info = {
+                    'Loss': total_losses.val,
+                    'alpha focal loss': 20. * focal_losses.val,
+                    'dice loss': dice_losses.val,
+                }
+                fabric.log_dict(log_info, step=steps)
+
+            if(cfg.save_embeddings_only_for_iterative_sampling==True):
+                features_file_name = os.path.join(cfg.image_features_embeddings_dir,
+                                                  (str(name) + "_image_embeddings_cache.pklz"))
+                if os.path.exists(features_file_name):
+                    os.remove(features_file_name)
 
 
 def configure_opt(cfg: Box, model: Model):

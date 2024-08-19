@@ -62,7 +62,6 @@ class Model(nn.Module):
         else:
             predictor.set_image(images)
 
-        low_res_masks_list=[]
         pred_masks = []
         ious = []
         if not centers:
@@ -95,11 +94,10 @@ class Model(nn.Module):
             low_res_masks, prd_scores, _, _ = predictor.model.sam_mask_decoder(image_embeddings=predictor._features["image_embed"][-1].unsqueeze(0),image_pe=predictor.model.sam_prompt_encoder.get_dense_pe(),sparse_prompt_embeddings=sparse_embeddings,dense_prompt_embeddings=dense_embeddings,multimask_output=True,repeat_image=batched_mode,high_res_features=high_res_features,)
             prd_masks = predictor._transforms.postprocess_masks(low_res_masks, predictor._orig_hw[-1])# Upscale the masks to the original image resolution
 
-            low_res_masks_list.append(low_res_masks.squeeze(1))
             pred_masks.append(prd_masks.squeeze(1))
             ious.append(prd_scores)
 
-        return pred_masks, ious,low_res_masks_list
+        return pred_masks, ious
 
 
 

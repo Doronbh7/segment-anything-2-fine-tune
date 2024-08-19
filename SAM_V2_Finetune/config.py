@@ -3,13 +3,14 @@ from box import Box
 config = {
     "num_devices": 1,
     "num_workers": 2,
-    "num_epochs": 1,
-    "eval_interval": 1,
+    "num_epochs": 3,
+    "eval_interval": 3,
     "out_checkpoint_dir": "out/training",
-    "save_validation_images_result": True,
+    "save_validation_images_result": False,
     "segmentated_validation_images_dir":"<segmentated_validation_images_dir path>",
     "prompt_type":"points", #points/bounding_box
     "save_image_embeddings":True,
+    "save_embeddings_only_for_iterative_sampling": True,  # Temporarily save image embeddings only during the correction clicks loop. Useful for low storage.
     "image_features_embeddings_dir":"<image_features_embeddings_dir path>",
     "iterative_sampling":True,
     "correction_clicks":7,#(only for iterative sampling=True)
