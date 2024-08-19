@@ -32,7 +32,7 @@ config = {
         },
     },
     "dataset": {
-        "image_resize": 1024,
+        "image_resize": 256, #for iterative sampling use 256
         "train": {
             "root_dir": "<images path>",
             "annotation_file": "annotation file path (.json)"
