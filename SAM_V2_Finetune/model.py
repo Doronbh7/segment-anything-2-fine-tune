@@ -27,15 +27,14 @@ class Model(nn.Module):
             self.predictor.model.sam_mask_decoder.train(True)
 
 
-    def forward(self, images,name, bboxes=None, centers=None,previous_masks=None):
+    def forward(self, images,name, bboxes=None, centers=None,previous_masks=None,validate=False):
         if not bboxes and not centers:
             raise ValueError("Either bboxes or centers must be provided")
 
         predictor=self.predictor
 
 ##image embedding cache store and load(reduce 35% of training time)
-        if(self.cfg.save_image_embeddings==True):
-
+        if((self.cfg.save_image_embeddings==True)and((validate==False)or(self.cfg.save_embeddings_only_for_iterative_sampling==False))):
             features_file_name=os.path.join(self.cfg.image_features_embeddings_dir,(str(name)+"_image_embeddings_cache.pklz"))
 
             if os.path.exists(features_file_name):

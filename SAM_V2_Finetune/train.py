@@ -84,7 +84,7 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
             images, bboxes, gt_masks, name, centers = data
 
             if (cfg.prompt_type == "bounding_box"):
-                pred_masks, pred_scores,_ = model(images, name, bboxes=bboxes)
+                pred_masks, pred_scores = model(images, name, bboxes=bboxes,validate=True)
                 for idx, (pred_mask,pred_score, gt_mask) in enumerate(zip(pred_masks[0],pred_scores[0], gt_masks[0])):
                     prd_mask,score,_=best_score_mask(pred_mask,pred_score)
                     prd_mask=prd_mask.cpu()
@@ -102,7 +102,7 @@ def validate(fabric: L.Fabric, model: Model, val_dataloader: DataLoader, epoch: 
                     f1_scores.update(batch_f1, 1)
 
             if(cfg.prompt_type=="points"):
-                pred_masks, pred_scores ,_= model(images,name,centers=centers)
+                pred_masks, pred_scores = model(images,name,centers=centers,validate=True)
 
                 for idx, (pred_mask,pred_score, gt_mask) in enumerate(zip(pred_masks[0],pred_scores[0], gt_masks[0])):
                     prd_mask,score,_=best_score_mask(pred_mask,pred_score)
@@ -151,7 +151,7 @@ def train_sam(
     focal_loss = FocalLoss()
     dice_loss = DiceLoss()
 
-    for epoch in range(1, cfg.num_epochs):
+    for epoch in range(1, cfg.num_epochs+1):
         batch_time = AverageMeter()
         data_time = AverageMeter()
         focal_losses = AverageMeter()
@@ -159,13 +159,8 @@ def train_sam(
         iou_losses = AverageMeter()
         total_losses = AverageMeter()
         end = time.time()
-        validated = False
         iter=0
         for num,data in enumerate(train_dataloader):
-
-            if  epoch % cfg.eval_interval == 0 and not validated:
-                validate(fabric, model, val_dataloader, epoch)
-                validated = True
 
             data_time.update(time.time() - end)
             images, bboxes, gt_masks,name, centers = data
@@ -276,7 +271,8 @@ def train_sam(
                                                   (str(name) + "_image_embeddings_cache.pklz"))
                 if os.path.exists(features_file_name):
                     os.remove(features_file_name)
-
+        if epoch % cfg.eval_interval == 0 :
+            validate(fabric, model, val_dataloader, epoch)
 
 def configure_opt(cfg: Box, model: Model):
 
@@ -319,7 +315,6 @@ def main(cfg: Box) -> None:
     model, optimizer = fabric.setup(model, optimizer)
 
     train_sam(cfg, fabric, model, optimizer, scheduler, train_data, val_data)
-    validate(fabric, model, val_data, epoch=cfg.num_epochs)
 
 
 if __name__ == "__main__":
